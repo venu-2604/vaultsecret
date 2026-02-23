@@ -55,7 +55,7 @@ export default function Index() {
           className="text-center mb-10"
         >
           <h1 className="text-5xl font-bold tracking-tight mb-3">
-            <span className="gradient-text text-glow">ChatSecret</span>
+            <span className="gradient-text text-glow">VaultSecret</span>
           </h1>
           <p className="text-muted-foreground text-lg font-light">
             No Accounts. Just Secrets.
