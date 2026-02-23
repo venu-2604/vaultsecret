@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Lock, ArrowRight, Shield } from 'lucide-react';
+import { Lock, ArrowRight } from 'lucide-react';
 import ParticleBackground from '@/components/ParticleBackground';
 import { hashPassword } from '@/lib/crypto';
 
@@ -43,7 +43,7 @@ export default function Index() {
           className="flex justify-center mb-8"
         >
           <div className="w-16 h-16 rounded-2xl gradient-primary flex items-center justify-center shadow-lg shadow-primary/20">
-            <Shield className="w-8 h-8 text-primary-foreground" />
+            <span className="text-2xl font-black tracking-tighter text-primary-foreground" style={{ fontFamily: 'monospace' }}>VS</span>
           </div>
         </motion.div>
 
