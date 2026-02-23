@@ -214,7 +214,7 @@ export default function ChatRoom() {
             <Shield className="w-4 h-4 text-primary-foreground" />
           </div>
           <div>
-            <h1 className="text-sm font-semibold gradient-text">ChatSecret</h1>
+            <h1 className="text-sm font-semibold gradient-text">VaultSecret</h1>
             <button
               onClick={copyRoomId}
               className="flex items-center gap-1 text-[10px] font-mono text-muted-foreground hover:text-foreground transition-colors"
