@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Shield, LogOut, Copy, Check, Wifi, WifiOff } from 'lucide-react';
+import { LogOut, Copy, Check, Wifi, WifiOff } from 'lucide-react';
+import vsLogo from '@/assets/vs-logo.jpg';
 import { supabase } from '@/integrations/supabase/client';
 import { deriveKey, encryptMessage, decryptMessage, generateSenderId } from '@/lib/crypto';
 import ChatMessage from '@/components/ChatMessage';
@@ -210,8 +211,8 @@ export default function ChatRoom() {
         className="glass-strong border-b border-border/30 px-4 py-3 flex items-center justify-between shrink-0 z-10"
       >
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl gradient-primary flex items-center justify-center">
-            <Shield className="w-4 h-4 text-primary-foreground" />
+          <div className="w-9 h-9 rounded-xl overflow-hidden">
+            <img src={vsLogo} alt="VaultSecret logo" className="w-full h-full object-cover" />
           </div>
           <div>
             <h1 className="text-sm font-semibold gradient-text">VaultSecret</h1>
@@ -259,8 +260,8 @@ export default function ChatRoom() {
             transition={{ delay: 0.5 }}
             className="flex flex-col items-center justify-center h-full text-center px-6"
           >
-            <div className="w-12 h-12 rounded-2xl bg-muted/50 flex items-center justify-center mb-4">
-              <Shield className="w-5 h-5 text-muted-foreground" />
+            <div className="w-12 h-12 rounded-2xl overflow-hidden mb-4">
+              <img src={vsLogo} alt="VaultSecret logo" className="w-full h-full object-cover" />
             </div>
             <p className="text-muted-foreground text-sm">End-to-end encrypted</p>
             <p className="text-muted-foreground/60 text-xs mt-1">

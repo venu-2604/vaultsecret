@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Lock, ArrowRight } from 'lucide-react';
 import ParticleBackground from '@/components/ParticleBackground';
+import vsLogo from '@/assets/vs-logo.jpg';
 import { hashPassword } from '@/lib/crypto';
 
 export default function Index() {
@@ -42,8 +43,8 @@ export default function Index() {
           transition={{ duration: 0.6, delay: 0.2 }}
           className="flex justify-center mb-8"
         >
-          <div className="w-16 h-16 rounded-2xl gradient-primary flex items-center justify-center shadow-lg shadow-primary/20">
-            <span className="text-2xl font-black tracking-tighter text-primary-foreground" style={{ fontFamily: 'monospace' }}>VS</span>
+          <div className="w-16 h-16 rounded-2xl overflow-hidden shadow-lg shadow-primary/20">
+            <img src={vsLogo} alt="VaultSecret logo" className="w-full h-full object-cover" />
           </div>
         </motion.div>
 
