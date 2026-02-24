@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { Lock, ArrowRight } from 'lucide-react';
 import ParticleBackground from '@/components/ParticleBackground';
 import vsLogo from '@/assets/vs-logo.png';
+import VSLoader from '@/components/VSLoader';
 import { hashPassword } from '@/lib/crypto';
 import { useUser } from '@/hooks/useUser';
 import LoginForm from '@/components/LoginForm';
@@ -26,11 +27,7 @@ export default function Index() {
   };
 
   if (userLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }} className="w-8 h-8 border-2 border-primary/30 border-t-primary rounded-full" />
-      </div>
-    );
+    return <VSLoader />;
   }
 
   return (
@@ -126,7 +123,7 @@ export default function Index() {
                 className="w-full gradient-primary text-primary-foreground font-semibold py-3.5 rounded-xl flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {loading ? (
-                  <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }} className="w-5 h-5 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full" />
+                  <VSLoader size={32} overlay={false} />
                 ) : (
                   <>
                     Enter Room
