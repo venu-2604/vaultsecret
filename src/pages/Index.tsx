@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Lock, ArrowRight } from 'lucide-react';
 import ParticleBackground from '@/components/ParticleBackground';
-import vsLogo from '@/assets/vs-logo.jpg';
+import vsLogo from '@/assets/vs-logo.png';
 import { hashPassword } from '@/lib/crypto';
 import { useUser } from '@/hooks/useUser';
 import LoginForm from '@/components/LoginForm';
