@@ -1,5 +1,5 @@
-import vsCenter from '@/assets/vs-center.png';
-import vsRing from '@/assets/vs-ring.png';
+// import vsCenter from '@/assets/vs-center.png';
+// import vsRing from '@/assets/vs-ring.png';
 
 interface VSLoaderProps {
   size?: number;
@@ -14,14 +14,14 @@ export default function VSLoader({ size = 120, overlay = true }: VSLoaderProps) 
     <div className="flex items-center justify-center" style={{ width: ringSize, height: ringSize, position: 'relative' }}>
       {/* Rotating ring */}
       <img
-        src={vsRing}
+        src="https://vsimage1.s3.us-east-1.amazonaws.com/vs-ring.png"
         alt=""
         className="absolute inset-0 w-full h-full animate-spin-linear"
         draggable={false}
       />
       {/* Fixed VS center */}
       <img
-        src={vsCenter}
+        src="https://vsimage1.s3.us-east-1.amazonaws.com/vs-center.png"
         alt="VS"
         style={{ width: centerSize, height: centerSize }}
         className="relative z-10 object-contain"
