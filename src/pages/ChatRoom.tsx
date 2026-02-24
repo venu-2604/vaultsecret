@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { LogOut, Copy, Check, WifiOff } from 'lucide-react';
-import vsLogo from '@/assets/vs-logo.png';
+// import vsLogo from '@/assets/vs-logo.png';
 import { supabase } from '@/integrations/supabase/client';
 import { deriveKey, encryptMessage, decryptMessage } from '@/lib/crypto';
 import { joinRoom, markMessagesSeen } from '@/lib/user';
@@ -269,7 +269,7 @@ export default function ChatRoom() {
       >
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl overflow-hidden">
-            <img src={vsLogo} alt="VaultSecret logo" className="w-full h-full object-cover" />
+            <img src="https://vsimage1.s3.us-east-1.amazonaws.com/vs-logo.png" alt="VaultSecret logo" className="w-full h-full object-cover" />
           </div>
           <div>
             <h1 className="text-sm font-semibold gradient-text">VaultSecret</h1>
