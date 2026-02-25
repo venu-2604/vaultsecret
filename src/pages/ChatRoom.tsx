@@ -202,15 +202,10 @@ export default function ChatRoom() {
     markMessagesSeen(ids, userId, roomId);
   }, [roomId, userId]);
 
-  // Track which messages we've already marked as seen locally
-  const locallySeenRef = useRef<Set<string>>(new Set());
-
   const handleMessageVisible = useCallback((messageId: string) => {
-    if (locallySeenRef.current.has(messageId)) return;
-    locallySeenRef.current.add(messageId);
     seenQueueRef.current.add(messageId);
     clearTimeout(seenFlushRef.current);
-    seenFlushRef.current = setTimeout(flushSeenQueue, 300);
+    seenFlushRef.current = setTimeout(flushSeenQueue, 500);
   }, [flushSeenQueue]);
 
   const handleSend = useCallback(async (text: string) => {

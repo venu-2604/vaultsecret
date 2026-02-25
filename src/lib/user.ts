@@ -110,5 +110,5 @@ export async function joinRoom(roomId: string, userId: string): Promise<{ ok: bo
 export async function markMessagesSeen(messageIds: string[], userId: string, roomId: string) {
   if (!messageIds.length) return;
   const rows = messageIds.map(mid => ({ message_id: mid, user_id: userId, room_id: roomId }));
-  await supabase.from('message_seen').upsert(rows, { onConflict: 'message_id,user_id' }).select();
+  await supabase.from('message_seen').insert(rows).select();
 }
