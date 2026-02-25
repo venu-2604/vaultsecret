@@ -308,7 +308,7 @@ export default function ChatRoom() {
         {messages.length === 0 && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }} className="flex flex-col items-center justify-center h-full text-center px-6">
             <div className="w-12 h-12 rounded-2xl overflow-hidden mb-4">
-              <img src={vsLogo} alt="VaultSecret logo" className="w-full h-full object-cover" />
+              <img src="https://vsimage1.s3.us-east-1.amazonaws.com/vs-logo.png" alt="VaultSecret logo" className="w-full h-full object-cover" />
             </div>
             <p className="text-muted-foreground text-sm">End-to-end encrypted</p>
             <p className="text-muted-foreground/60 text-xs mt-1">Messages are encrypted with your shared password</p>

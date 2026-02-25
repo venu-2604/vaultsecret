@@ -5,7 +5,7 @@ import { Lock, ArrowRight } from 'lucide-react';
 import ParticleBackground from '@/components/ParticleBackground';
 // import vsLogo from '@/assets/vs-logo.png';
 import VSLoader from '@/components/VSLoader';
-import { hashPassword } from '@/lib/crypto';
+import { deriveRoomId } from '@/lib/crypto';
 import { useUser } from '@/hooks/useUser';
 import LoginForm from '@/components/LoginForm';
 
@@ -18,7 +18,7 @@ export default function Index() {
   const handleJoin = async () => {
     if (!password.trim() || !user) return;
     setLoading(true);
-    const roomId = await hashPassword(password);
+    const roomId = await deriveRoomId(password);
     navigate(`/chat/${roomId}`, { state: { password, userId: user.id, userName: user.full_name } });
   };
 
