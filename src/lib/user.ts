@@ -55,7 +55,7 @@ export async function findUserByName(name: string): Promise<VSUser | null> {
   const { data, error } = await supabase
     .from('users')
     .select('*')
-    .eq('full_name', name)
+    .eq('full_name', name.toLowerCase())
     .maybeSingle();
 
   if (error) {
@@ -67,9 +67,15 @@ export async function findUserByName(name: string): Promise<VSUser | null> {
 }
 
 export async function createUser(name: string): Promise<VSUser> {
+  // Check if name already exists (case-insensitive since we store lowercase)
+  const existing = await findUserByName(name);
+  if (existing) {
+    throw new Error('NAME_EXISTS');
+  }
+
   const { data, error } = await supabase
     .from('users')
-    .insert({ full_name: name })
+    .insert({ full_name: name.toLowerCase() })
     .select()
     .single();
   if (error) throw error;
