@@ -8,16 +8,15 @@ export interface VSUser {
   created_at: string;
 }
 
-/** Sanitize and validate full_name */
+/** Sanitize full_name – preserve original casing, allow numbers & special chars */
 export function sanitizeName(name: string): string {
-  return name.trim().replace(/<[^>]*>/g, '').replace(/[&<>"'/]/g, '');
+  return name.trim().replace(/<[^>]*>/g, '');
 }
 
 export function validateName(name: string): string | null {
   const sanitized = sanitizeName(name);
   if (sanitized.length < 3) return 'Name must be at least 3 characters';
   if (sanitized.length > 50) return 'Name must be less than 50 characters';
-  if (/^\d+$/.test(sanitized)) return 'Name cannot be only numbers';
   return null;
 }
 
@@ -55,7 +54,7 @@ export async function findUserByName(name: string): Promise<VSUser | null> {
   const { data, error } = await supabase
     .from('users')
     .select('*')
-    .eq('full_name', name.toLowerCase())
+    .eq('full_name', name)
     .maybeSingle();
 
   if (error) {
@@ -75,7 +74,7 @@ export async function createUser(name: string): Promise<VSUser> {
 
   const { data, error } = await supabase
     .from('users')
-    .insert({ full_name: name.toLowerCase() })
+    .insert({ full_name: name })
     .select()
     .single();
   if (error) throw error;
