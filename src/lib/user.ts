@@ -45,7 +45,7 @@ export async function findUserByName(name: string): Promise<VSUser | null> {
   const { data } = await supabase
     .from('users')
     .select('*')
-    .ilike('full_name', name)
+    .eq('full_name', name)
     .maybeSingle();
   return data as VSUser | null;
 }
