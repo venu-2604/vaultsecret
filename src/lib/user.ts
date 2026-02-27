@@ -6,6 +6,7 @@ export interface VSUser {
   id: string;
   full_name: string;
   created_at: string;
+  auth_uid?: string;
 }
 
 /** Sanitize full_name – preserve original casing, allow numbers & special chars */
@@ -52,16 +53,32 @@ export async function findUserByName(name: string): Promise<VSUser | null> {
 
 
 
+/** Link the current anonymous auth session to an app user */
+export async function linkAuthUid(userId: string): Promise<void> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return;
+  const authUid = session.user.id;
+  
+  // Update the user's auth_uid to the current session
+  await supabase
+    .from('users')
+    .update({ auth_uid: authUid } as any)
+    .eq('id', userId);
+}
+
 export async function createUser(name: string): Promise<VSUser> {
-  // Check if name already exists (case-insensitive since we store lowercase)
+  // Check if name already exists
   const existing = await findUserByName(name);
   if (existing) {
     throw new Error('NAME_EXISTS');
   }
 
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error('No auth session');
+
   const { data, error } = await supabase
     .from('users')
-    .insert({ full_name: name })
+    .insert({ full_name: name, auth_uid: session.user.id } as any)
     .select()
     .single();
   if (error) throw error;

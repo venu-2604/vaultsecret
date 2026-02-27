@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { VSUser, getStoredUserId, getUserById, storeUserId, clearUserId } from '@/lib/user';
+import { VSUser, getStoredUserId, getUserById, storeUserId, clearUserId, linkAuthUid } from '@/lib/user';
 
 export function useUser() {
   const [user, setUser] = useState<VSUser | null>(null);
@@ -11,6 +11,8 @@ export function useUser() {
       if (storedId) {
         const u = await getUserById(storedId);
         if (u) {
+          // Re-link auth_uid on each session restore
+          await linkAuthUid(u.id);
           setUser(u);
         } else {
           clearUserId();
