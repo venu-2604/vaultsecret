@@ -88,45 +88,6 @@ export default function Index() {
                   autoFocus
                 />
               </div>
-<<<<<<< HEAD
-
-              <div>
-                <label className="text-xs text-muted-foreground uppercase tracking-widest font-medium mb-2 block">
-                  Room Password
-                </label>
-                <div className="relative">
-                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={e => setPassword(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    placeholder="Enter shared password..."
-                    className="w-full bg-muted/50 border border-border/50 rounded-xl py-3.5 pl-11 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/50 focus:glow-border transition-all"
-                    autoFocus
-                  />
-                </div>
-                <p className="text-[11px] text-muted-foreground mt-2 leading-relaxed">
-                  Share this password with someone to join the same encrypted room.
-                </p>
-              </div>
-
-              <button
-                onClick={handleJoin}
-                disabled={!password.trim() || loading}
-                className="w-full gradient-primary text-primary-foreground font-semibold py-3.5 rounded-xl flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {loading ? (
-                  <VSLoader size={32} overlay={false} />
-                ) : (
-                  <>
-                    Enter Room
-                    <ArrowRight className="w-4 h-4" />
-                  </>
-                )}
-              </button>
-=======
->>>>>>> parent of 77dc939 (Add user-based login flow)
               <p className="text-[11px] text-muted-foreground mt-2 leading-relaxed">
                 Share this password with someone to join the same encrypted room.
               </p>
@@ -138,11 +99,7 @@ export default function Index() {
               className="w-full gradient-primary text-primary-foreground font-semibold py-3.5 rounded-xl flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {loading ? (
-                <motion.div
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-                  className="w-5 h-5 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full"
-                />
+                <VSLoader size={32} overlay={false} />
               ) : (
                 <>
                   Enter Room
