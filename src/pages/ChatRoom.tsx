@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { LogOut, Copy, Check, Wifi, WifiOff } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { deriveKey, encryptMessage, decryptMessage, generateSenderId } from '@/lib/crypto';
 import ChatMessage from '@/components/ChatMessage';
