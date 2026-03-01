@@ -14,116 +14,93 @@ export type Database = {
   }
   public: {
     Tables: {
-      message_seen: {
+      users: {
         Row: {
-          message_id: string
-          room_id: string
-          seen_at: string
-          user_id: string
+          id: string
+          full_name: string
+          auth_uid: string | null
+          created_at: string
         }
         Insert: {
-          message_id: string
-          room_id: string
-          seen_at?: string
-          user_id: string
+          id?: string
+          full_name: string
+          auth_uid?: string | null
+          created_at?: string
         }
         Update: {
-          message_id?: string
-          room_id?: string
-          seen_at?: string
-          user_id?: string
+          id?: string
+          full_name?: string
+          auth_uid?: string | null
+          created_at?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "message_seen_message_id_fkey"
-            columns: ["message_id"]
-            isOneToOne: false
-            referencedRelation: "messages"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "message_seen_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       messages: {
         Row: {
-          created_at: string
-          encrypted_content: string
           id: string
-          message_type: string
           room_id: string
           sender_id: string
+          encrypted_content: string
+          message_type: string
+          created_at: string
         }
         Insert: {
-          created_at?: string
-          encrypted_content: string
           id?: string
-          message_type?: string
           room_id: string
           sender_id: string
+          encrypted_content: string
+          message_type?: string
+          created_at?: string
         }
         Update: {
-          created_at?: string
-          encrypted_content?: string
           id?: string
-          message_type?: string
           room_id?: string
           sender_id?: string
+          encrypted_content?: string
+          message_type?: string
+          created_at?: string
         }
         Relationships: []
       }
       room_participants: {
         Row: {
           id: string
-          joined_at: string
           room_id: string
           user_id: string
+          joined_at: string
         }
         Insert: {
           id?: string
-          joined_at?: string
           room_id: string
           user_id: string
+          joined_at?: string
         }
         Update: {
           id?: string
-          joined_at?: string
           room_id?: string
           user_id?: string
+          joined_at?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "room_participants_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
-      users: {
+      message_seen: {
         Row: {
-          auth_uid: string | null
-          created_at: string
-          full_name: string
-          id: string
+          message_id: string
+          room_id: string
+          user_id: string
+          seen_at: string
         }
         Insert: {
-          auth_uid?: string | null
-          created_at?: string
-          full_name: string
-          id?: string
+          message_id: string
+          room_id: string
+          user_id: string
+          seen_at?: string
         }
         Update: {
-          auth_uid?: string | null
-          created_at?: string
-          full_name?: string
-          id?: string
+          message_id?: string
+          room_id?: string
+          user_id?: string
+          seen_at?: string
         }
         Relationships: []
       }
@@ -134,6 +111,10 @@ export type Database = {
     Functions: {
       get_app_user_id: { Args: never; Returns: string }
       is_room_member: { Args: { _room_id: string }; Returns: boolean }
+      get_user_by_name: {
+        Args: { _name: string }
+        Returns: { id: string; full_name: string; auth_uid: string | null; created_at: string }[]
+      }
     }
     Enums: {
       [_ in never]: never

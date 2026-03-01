@@ -1,11 +1,18 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { LogOut, Copy, Check, WifiOff } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { deriveKey, encryptMessage, decryptMessage, generateSenderId } from '@/lib/crypto';
 import ChatMessage from '@/components/ChatMessage';
 import ChatInput from '@/components/ChatInput';
 import TypingIndicator from '@/components/TypingIndicator';
+import {
+  type VSUser,
+  markMessagesSeen,
+  getPeerUserId,
+  getSeenMessageIds,
+} from '@/lib/user';
 
 interface Message {
   id: string;
@@ -14,20 +21,32 @@ interface Message {
   timestamp: string;
 }
 
+interface ChatLocationState {
+  password?: string;
+  user?: VSUser;
+}
+
 export default function ChatRoom() {
   const { roomId } = useParams<{ roomId: string }>();
   const location = useLocation();
   const navigate = useNavigate();
-  const password = (location.state as { password?: string })?.password;
+  const state = location.state as ChatLocationState | null;
+  const password = state?.password;
+  const user = state?.user;
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [encryptionKey, setEncryptionKey] = useState<CryptoKey | null>(null);
-  const [senderId] = useState(() => generateSenderId());
+  const [senderId] = useState(() => user?.id ?? generateSenderId());
   const [isTyping, setIsTyping] = useState(false);
   const [peerOnline, setPeerOnline] = useState(false);
   const [copied, setCopied] = useState(false);
   const [blurred, setBlurred] = useState(false);
+  const [peerUserId, setPeerUserId] = useState<string | null>(null);
+  const [seenByPeerIds, setSeenByPeerIds] = useState<Set<string>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const messageElsRef = useRef<Map<string, HTMLDivElement>>(new Map());
+  const markedSeenIdsRef = useRef<Set<string>>(new Set());
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
 
   // Redirect if no password
@@ -160,6 +179,71 @@ export default function ChatRoom() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isTyping]);
 
+  // Fetch peer user id (for "seen by peer" and RLS)
+  useEffect(() => {
+    if (!roomId || !user?.id) return;
+    getPeerUserId(roomId, user.id).then(setPeerUserId);
+  }, [roomId, user?.id]);
+
+  // Fetch initial "seen by peer" and subscribe to message_seen for this room
+  useEffect(() => {
+    if (!roomId || !peerUserId) return;
+    getSeenMessageIds(roomId, peerUserId).then(setSeenByPeerIds);
+    const channel = supabase
+      .channel(`message_seen:${roomId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'message_seen',
+          filter: `room_id=eq.${roomId}`,
+        },
+        (payload) => {
+          const row = payload.new as { message_id: string; user_id: string };
+          if (row.user_id === peerUserId) {
+            setSeenByPeerIds((prev) => new Set(prev).add(row.message_id));
+          }
+        }
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [roomId, peerUserId]);
+
+  // Mark peer messages as seen when they enter the viewport
+  useEffect(() => {
+    if (!user?.id || !roomId) return;
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const toMark: string[] = [];
+        entries.forEach((entry) => {
+          if (!entry.isIntersecting) return;
+          const el = entry.target as HTMLDivElement;
+          const id = el.dataset.messageId;
+          const isOwn = el.dataset.isOwn === 'true';
+          if (id && !isOwn && !markedSeenIdsRef.current.has(id)) {
+            markedSeenIdsRef.current.add(id);
+            toMark.push(id);
+          }
+        });
+        if (toMark.length) {
+          markMessagesSeen(toMark, user.id, roomId).catch(() => {});
+        }
+      },
+      { root: container, threshold: 0.5 }
+    );
+    messages.forEach((msg) => {
+      if (msg.isOwn) return;
+      const el = messageElsRef.current.get(msg.id);
+      if (el) observer.observe(el);
+    });
+    return () => observer.disconnect();
+  }, [messages, user?.id, roomId]);
+
   const handleSend = useCallback(async (text: string) => {
     if (!encryptionKey || !roomId) return;
 
@@ -174,11 +258,26 @@ export default function ChatRoom() {
       timestamp: new Date().toISOString(),
     }]);
 
-    await supabase.from('messages').insert({
-      room_id: roomId,
-      sender_id: senderId,
-      encrypted_content: encrypted,
-    });
+    const { data: inserted } = await supabase
+      .from('messages')
+      .insert({
+        room_id: roomId,
+        sender_id: senderId,
+        encrypted_content: encrypted,
+        message_type: 'text',
+      })
+      .select('id, created_at')
+      .single();
+
+    if (inserted) {
+      setMessages(prev =>
+        prev.map((m) =>
+          m.id === tempId
+            ? { ...m, id: inserted.id, timestamp: inserted.created_at }
+            : m
+        )
+      );
+    }
   }, [encryptionKey, roomId, senderId]);
 
   const handleTyping = useCallback(() => {
@@ -221,6 +320,9 @@ export default function ChatRoom() {
               {roomId.slice(0, 16)}...
               {copied ? <Check className="w-2.5 h-2.5" /> : <Copy className="w-2.5 h-2.5" />}
             </button>
+            {user && (
+              <p className="text-[10px] text-muted-foreground mt-0.5">as {user.full_name}</p>
+            )}
           </div>
         </div>
 
@@ -243,6 +345,8 @@ export default function ChatRoom() {
           <button
             onClick={() => navigate('/')}
             className="p-2 rounded-xl hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-all"
+            title="Leave room"
+            aria-label="Leave room"
           >
             <LogOut className="w-4 h-4" />
           </button>
@@ -250,7 +354,10 @@ export default function ChatRoom() {
       </motion.header>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto py-4 space-y-2">
+      <div
+        ref={messagesContainerRef}
+        className="flex-1 overflow-y-auto py-4 space-y-2"
+      >
         {messages.length === 0 && (
           <motion.div
             initial={{ opacity: 0 }}
@@ -268,13 +375,23 @@ export default function ChatRoom() {
           </motion.div>
         )}
 
-        {messages.map(msg => (
-          <ChatMessage
+        {messages.map((msg) => (
+          <div
             key={msg.id}
-            content={msg.content}
-            isOwn={msg.isOwn}
-            timestamp={msg.timestamp}
-          />
+            ref={(el) => {
+              if (el) messageElsRef.current.set(msg.id, el);
+              else messageElsRef.current.delete(msg.id);
+            }}
+            data-message-id={msg.id}
+            data-is-own={String(msg.isOwn)}
+          >
+            <ChatMessage
+              content={msg.content}
+              isOwn={msg.isOwn}
+              timestamp={msg.timestamp}
+              seen={msg.isOwn ? seenByPeerIds.has(msg.id) : undefined}
+            />
+          </div>
         ))}
 
         <AnimatePresence>

@@ -1,27 +1,51 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Lock, ArrowRight } from 'lucide-react';
 import ParticleBackground from '@/components/ParticleBackground';
-// import vsLogo from '@/assets/vs-logo.png';
 import VSLoader from '@/components/VSLoader';
 import { hashPassword } from '@/lib/crypto';
+import { useUser } from '@/hooks/useUser';
+import LoginForm from '@/components/LoginForm';
+import { joinRoom } from '@/lib/user';
 
 export default function Index() {
+  const { user, loading: userLoading, login, logout } = useUser();
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [roomError, setRoomError] = useState('');
   const navigate = useNavigate();
 
   const handleJoin = async () => {
-    if (!password.trim()) return;
+    if (!password.trim() || !user) return;
     setLoading(true);
+    setRoomError('');
     const roomId = await hashPassword(password);
-    navigate(`/chat/${roomId}`, { state: { password } });
+    try {
+      const result = await joinRoom(roomId, user.id);
+      if (!result.ok) {
+        setRoomError(result.error || 'Could not join room');
+        setLoading(false);
+        return;
+      }
+    } catch {
+      // Backend may not have room_participants; still allow entering the room
+    }
+    navigate(`/chat/${roomId}`, { state: { password, user } });
+    setLoading(false);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') handleJoin();
   };
+
+  if (userLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <VSLoader />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center relative overflow-hidden">
@@ -64,50 +88,83 @@ export default function Index() {
           </p>
         </motion.div>
 
-        {/* Card */}
+        {/* Card: step 1 = Your Name, step 2 = Room Password */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5 }}
           className="glass-strong rounded-3xl p-8 glow-border"
         >
-          <div className="space-y-6">
-            <div>
-              <label className="text-xs text-muted-foreground uppercase tracking-widest font-medium mb-2 block">
-                Room Password
-              </label>
-              <div className="relative">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <input
-                  type="password"
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder="Enter shared password..."
-                  className="w-full bg-muted/50 border border-border/50 rounded-xl py-3.5 pl-11 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/50 focus:glow-border transition-all"
-                  autoFocus
-                />
-              </div>
-              <p className="text-[11px] text-muted-foreground mt-2 leading-relaxed">
-                Share this password with someone to join the same encrypted room.
-              </p>
-            </div>
-
-            <button
-              onClick={handleJoin}
-              disabled={!password.trim() || loading}
-              className="w-full gradient-primary text-primary-foreground font-semibold py-3.5 rounded-xl flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              {loading ? (
-                <VSLoader size={32} overlay={false} />
-              ) : (
-                <>
-                  Enter Room
-                  <ArrowRight className="w-4 h-4" />
-                </>
-              )}
-            </button>
-          </div>
+          <AnimatePresence mode="wait">
+            {!user ? (
+              <motion.div
+                key="login"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="space-y-6"
+              >
+                <LoginForm onLogin={login} />
+              </motion.div>
+            ) : (
+              <motion.div
+                key="room"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="space-y-6"
+              >
+                <p className="text-xs text-muted-foreground">
+                  Signed in as <span className="font-medium text-foreground">{user.full_name}</span>
+                  {' · '}
+                  <button
+                    type="button"
+                    onClick={logout}
+                    className="underline hover:text-foreground"
+                  >
+                    Sign out
+                  </button>
+                </p>
+                <div>
+                  <label className="text-xs text-muted-foreground uppercase tracking-widest font-medium mb-2 block">
+                    Room Password
+                  </label>
+                  <div className="relative">
+                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={e => { setPassword(e.target.value); setRoomError(''); }}
+                      onKeyDown={handleKeyDown}
+                      placeholder="Enter shared password..."
+                      className="w-full bg-muted/50 border border-border/50 rounded-xl py-3.5 pl-11 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/50 focus:glow-border transition-all"
+                      autoFocus
+                    />
+                  </div>
+                  {roomError && (
+                    <p className="text-[11px] text-destructive mt-2">{roomError}</p>
+                  )}
+                  <p className="text-[11px] text-muted-foreground mt-2 leading-relaxed">
+                    Share this password with someone to join the same encrypted room.
+                  </p>
+                  <button
+                    onClick={handleJoin}
+                    disabled={!password.trim() || loading}
+                    className="w-full gradient-primary text-primary-foreground font-semibold py-3.5 rounded-xl flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {loading ? (
+                      <VSLoader size={32} overlay={false} />
+                    ) : (
+                      <>
+                        Enter Room
+                        <ArrowRight className="w-4 h-4" />
+                      </>
+                    )}
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </motion.div>
 
         {/* Footer */}
