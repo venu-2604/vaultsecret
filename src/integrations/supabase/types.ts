@@ -14,6 +14,42 @@ export type Database = {
   }
   public: {
     Tables: {
+      message_seen: {
+        Row: {
+          message_id: string
+          room_id: string
+          seen_at: string
+          user_id: string
+        }
+        Insert: {
+          message_id: string
+          room_id: string
+          seen_at?: string
+          user_id: string
+        }
+        Update: {
+          message_id?: string
+          room_id?: string
+          seen_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "message_seen_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "message_seen_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       messages: {
         Row: {
           created_at: string
@@ -38,6 +74,56 @@ export type Database = {
           message_type?: string
           room_id?: string
           sender_id?: string
+        }
+        Relationships: []
+      }
+      room_participants: {
+        Row: {
+          id: string
+          joined_at: string
+          room_id: string
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          joined_at?: string
+          room_id: string
+          user_id: string
+        }
+        Update: {
+          id?: string
+          joined_at?: string
+          room_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "room_participants_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      users: {
+        Row: {
+          auth_uid: string | null
+          created_at: string
+          full_name: string
+          id: string
+        }
+        Insert: {
+          auth_uid?: string | null
+          created_at?: string
+          full_name: string
+          id?: string
+        }
+        Update: {
+          auth_uid?: string | null
+          created_at?: string
+          full_name?: string
+          id?: string
         }
         Relationships: []
       }
