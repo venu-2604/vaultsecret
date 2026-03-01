@@ -88,6 +88,7 @@ export default function Index() {
                   autoFocus
                 />
               </div>
+<<<<<<< HEAD
 
               <div>
                 <label className="text-xs text-muted-foreground uppercase tracking-widest font-medium mb-2 block">
@@ -124,6 +125,8 @@ export default function Index() {
                   </>
                 )}
               </button>
+=======
+>>>>>>> parent of 77dc939 (Add user-based login flow)
               <p className="text-[11px] text-muted-foreground mt-2 leading-relaxed">
                 Share this password with someone to join the same encrypted room.
               </p>
