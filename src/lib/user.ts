@@ -98,11 +98,28 @@ export async function createUser(name: string): Promise<VSUser> {
   return data as VSUser;
 }
 
-/** Join room (server-side: atomic, enforces 2-user limit). Uses current auth user. */
-export async function joinRoom(roomId: string): Promise<{ ok: boolean; error?: string }> {
-  const { data, error } = await supabase.rpc('join_room', { p_room_id: roomId });
-  if (error) return { ok: false, error: error.message };
-  if (data === false) return { ok: false, error: 'Room is full (max 2 users)' };
+/** Check if room has space (max 2 participants) */
+export async function joinRoom(roomId: string, userId: string): Promise<{ ok: boolean; error?: string }> {
+  // Check existing participants
+  const { data: participants } = await supabase
+    .from('room_participants')
+    .select('user_id')
+    .eq('room_id', roomId);
+
+  const uniqueUsers = new Set((participants || []).map(p => p.user_id));
+
+  // Already in room
+  if (uniqueUsers.has(userId)) return { ok: true };
+
+  // Room full
+  if (uniqueUsers.size >= 2) return { ok: false, error: 'Room is full (max 2 users)' };
+
+  // Join
+  const { error } = await supabase
+    .from('room_participants')
+    .insert({ room_id: roomId, user_id: userId });
+
+  if (error && error.code !== '23505') return { ok: false, error: error.message };
   return { ok: true };
 }
 

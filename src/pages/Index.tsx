@@ -16,25 +16,22 @@ export default function Index() {
   const [roomError, setRoomError] = useState('');
   const navigate = useNavigate();
 
-  const ROOM_PASSWORD_KEY = 'vs_room_password_';
-
   const handleJoin = async () => {
     if (!password.trim() || !user) return;
     setLoading(true);
     setRoomError('');
     const roomId = await hashPassword(password);
     try {
-      const result = await joinRoom(roomId);
+      const result = await joinRoom(roomId, user.id);
       if (!result.ok) {
         setRoomError(result.error || 'Could not join room');
         setLoading(false);
         return;
       }
     } catch {
-      // Fallback if join_room RPC not deployed
+      // Backend may not have room_participants; still allow entering the room
     }
-    sessionStorage.setItem(ROOM_PASSWORD_KEY + roomId, password);
-    navigate(`/chat/${roomId}`, { state: { user } });
+    navigate(`/chat/${roomId}`, { state: { password, user } });
     setLoading(false);
   };
 

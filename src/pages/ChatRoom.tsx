@@ -21,9 +21,8 @@ interface Message {
   timestamp: string;
 }
 
-const ROOM_PASSWORD_KEY = 'vs_room_password_';
-
 interface ChatLocationState {
+  password?: string;
   user?: VSUser;
 }
 
@@ -32,10 +31,8 @@ export default function ChatRoom() {
   const location = useLocation();
   const navigate = useNavigate();
   const state = location.state as ChatLocationState | null;
+  const password = state?.password;
   const user = state?.user;
-  const [password, setPassword] = useState<string | null>(() =>
-    roomId ? sessionStorage.getItem(ROOM_PASSWORD_KEY + roomId) : null
-  );
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [encryptionKey, setEncryptionKey] = useState<CryptoKey | null>(null);
@@ -52,19 +49,12 @@ export default function ChatRoom() {
   const markedSeenIdsRef = useRef<Set<string>>(new Set());
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
 
-  // Redirect if no password (not in sessionStorage = didn't come from Index)
+  // Redirect if no password
   useEffect(() => {
     if (!password || !roomId) {
       navigate('/', { replace: true });
     }
   }, [password, roomId, navigate]);
-
-  // Clear room password from sessionStorage when leaving (avoid persistence in storage)
-  useEffect(() => {
-    return () => {
-      if (roomId) sessionStorage.removeItem(ROOM_PASSWORD_KEY + roomId);
-    };
-  }, [roomId]);
 
   // Derive encryption key
   useEffect(() => {
