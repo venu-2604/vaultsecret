@@ -133,12 +133,22 @@ export type Database = {
     }
     Functions: {
       get_app_user_id: { Args: never; Returns: string }
-      is_room_member: { Args: { _room_id: string }; Returns: boolean }
       get_user_by_name: {
         Args: { _name: string }
-        Returns: { id: string; full_name: string; created_at: string }[]
+        Returns: {
+          auth_uid: string | null
+          created_at: string
+          full_name: string
+          id: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "users"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
-      join_room: { Args: { p_room_id: string }; Returns: boolean }
+      is_room_member: { Args: { _room_id: string }; Returns: boolean }
     }
     Enums: {
       [_ in never]: never
