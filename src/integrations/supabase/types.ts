@@ -134,6 +134,11 @@ export type Database = {
     Functions: {
       get_app_user_id: { Args: never; Returns: string }
       is_room_member: { Args: { _room_id: string }; Returns: boolean }
+      get_user_by_name: {
+        Args: { _name: string }
+        Returns: { id: string; full_name: string; created_at: string }[]
+      }
+      join_room: { Args: { p_room_id: string }; Returns: boolean }
     }
     Enums: {
       [_ in never]: never
