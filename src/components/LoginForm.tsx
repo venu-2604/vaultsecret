@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, forwardRef } from 'react';
 import { motion } from 'framer-motion';
 import { User, ArrowRight, UserPlus } from 'lucide-react';
 import { VSUser, sanitizeName, validateName, findUserByName, createUser, linkAuthUid } from '@/lib/user';
@@ -7,7 +7,7 @@ interface LoginFormProps {
   onLogin: (user: VSUser) => void;
 }
 
-export default function LoginForm({ onLogin }: LoginFormProps) {
+const LoginForm = forwardRef<HTMLDivElement, LoginFormProps>(({ onLogin }, ref) => {
   const [name, setName] = useState('');
   const [error, setError] = useState('');
   const [notFound, setNotFound] = useState(false);
@@ -59,7 +59,7 @@ export default function LoginForm({ onLogin }: LoginFormProps) {
   };
 
   return (
-    <div className="space-y-6">
+    <div ref={ref} className="space-y-6">
       <div>
         <label className="text-xs text-muted-foreground uppercase tracking-widest font-medium mb-2 block">
           Your Name
@@ -126,4 +126,7 @@ export default function LoginForm({ onLogin }: LoginFormProps) {
       )}
     </div>
   );
-}
+});
+
+LoginForm.displayName = 'LoginForm';
+export default LoginForm;
