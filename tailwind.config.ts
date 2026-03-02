@@ -94,10 +94,6 @@ export default {
           "0%": { backgroundPosition: "-200% 0" },
           "100%": { backgroundPosition: "200% 0" },
         },
-        "spin-linear": {
-          "0%": { transform: "rotate(0deg)" },
-          "100%": { transform: "rotate(360deg)" },
-        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -105,7 +101,6 @@ export default {
         "fade-in-up": "fade-in-up 0.6s ease-out",
         "float": "float 6s ease-in-out infinite",
         "shimmer": "shimmer 3s linear infinite",
-        "spin-linear": "spin-linear 2s linear infinite",
       },
     },
   },
