@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Lock, ArrowRight } from 'lucide-react';
 import ParticleBackground from '@/components/ParticleBackground';
-// import vsLogo from '@/assets/vs-logo.png';
+import vsLogo from '@/assets/vs-logo.png';
 import VSLoader from '@/components/VSLoader';
 import { hashPassword } from '@/lib/crypto';
 import { useUser } from '@/hooks/useUser';
@@ -50,7 +50,7 @@ export default function Index() {
           className="flex justify-center mb-8"
         >
           <div className="w-16 h-16 rounded-2xl overflow-hidden shadow-lg shadow-primary/20">
-            <img src="https://vsimage1.s3.us-east-1.amazonaws.com/vs-logo.png" alt="VaultSecret logo" className="w-full h-full object-cover" />
+            <img src={vsLogo} alt="VaultSecret logo" className="w-full h-full object-cover" />
           </div>
         </motion.div>
 
@@ -65,7 +65,7 @@ export default function Index() {
             <span className="gradient-text text-glow">VaultSecret</span>
           </h1>
           <p className="text-muted-foreground text-lg font-light">
-            Between You and Me...
+            No Accounts. Just Secrets.
           </p>
         </motion.div>
 

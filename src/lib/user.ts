@@ -42,27 +42,12 @@ export async function getUserById(id: string): Promise<VSUser | null> {
   return data as VSUser | null;
 }
 
-// export async function findUserByName(name: string): Promise<VSUser | null> {
-//   const { data } = await supabase
-//     .from('users')
-//     .select('*')
-//     .ilike('full_name', name)
-//     .maybeSingle();
-//   return data as VSUser | null;
-// }
-
 export async function findUserByName(name: string): Promise<VSUser | null> {
-  const { data, error } = await supabase
+  const { data } = await supabase
     .from('users')
     .select('*')
-    .eq('full_name', name)
+    .ilike('full_name', name)
     .maybeSingle();
-
-  if (error) {
-    console.error(error);
-    return null;
-  }
-
   return data as VSUser | null;
 }
 
