@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { User, ArrowRight, UserPlus } from 'lucide-react';
-import { VSUser, sanitizeName, validateName, findUserByName, createUser, linkAuthUid } from '@/lib/user';
+import { VSUser, sanitizeName, validateName, findUserByName, createUser } from '@/lib/user';
 
 interface LoginFormProps {
   onLogin: (user: VSUser) => void;
@@ -27,8 +27,6 @@ export default function LoginForm({ onLogin }: LoginFormProps) {
 
     const user = await findUserByName(sanitized);
     if (user) {
-      // Link the current anonymous session to this user
-      await linkAuthUid(user.id);
       onLogin(user);
     } else {
       setNotFound(true);
