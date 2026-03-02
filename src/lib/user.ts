@@ -8,15 +8,16 @@ export interface VSUser {
   created_at: string;
 }
 
-/** Sanitize full_name – preserve original casing, allow numbers & special chars */
+/** Sanitize and validate full_name */
 export function sanitizeName(name: string): string {
-  return name.trim().replace(/<[^>]*>/g, '');
+  return name.trim().replace(/<[^>]*>/g, '').replace(/[&<>"'/]/g, '');
 }
 
 export function validateName(name: string): string | null {
   const sanitized = sanitizeName(name);
   if (sanitized.length < 3) return 'Name must be at least 3 characters';
   if (sanitized.length > 50) return 'Name must be less than 50 characters';
+  if (/^\d+$/.test(sanitized)) return 'Name cannot be only numbers';
   return null;
 }
 
@@ -66,12 +67,6 @@ export async function findUserByName(name: string): Promise<VSUser | null> {
 }
 
 export async function createUser(name: string): Promise<VSUser> {
-  // Check if name already exists (case-insensitive since we store lowercase)
-  const existing = await findUserByName(name);
-  if (existing) {
-    throw new Error('NAME_EXISTS');
-  }
-
   const { data, error } = await supabase
     .from('users')
     .insert({ full_name: name })
@@ -110,5 +105,5 @@ export async function joinRoom(roomId: string, userId: string): Promise<{ ok: bo
 export async function markMessagesSeen(messageIds: string[], userId: string, roomId: string) {
   if (!messageIds.length) return;
   const rows = messageIds.map(mid => ({ message_id: mid, user_id: userId, room_id: roomId }));
-  await supabase.from('message_seen').insert(rows).select();
+  await supabase.from('message_seen').upsert(rows, { onConflict: 'message_id,user_id' }).select();
 }

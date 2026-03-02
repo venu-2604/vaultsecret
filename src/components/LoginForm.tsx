@@ -41,13 +41,8 @@ export default function LoginForm({ onLogin }: LoginFormProps) {
     try {
       const user = await createUser(sanitized);
       onLogin(user);
-    } catch (err: any) {
-      if (err?.message === 'NAME_EXISTS') {
-        setError('This name is already taken. Please use a different name.');
-        setNotFound(false);
-      } else {
-        setError('Failed to create account. Try again.');
-      }
+    } catch {
+      setError('Failed to create account. Try again.');
     }
     setLoading(false);
   };
