@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { User, ArrowRight, UserPlus } from 'lucide-react';
-import { VSUser, sanitizeName, validateName, findUserByName, createUser } from '@/lib/user';
+import { VSUser, sanitizeName, validateName, findUserByName, createUser, linkAuthToUser } from '@/lib/user';
 
 interface LoginFormProps {
   onLogin: (user: VSUser) => void;
@@ -27,6 +27,11 @@ export default function LoginForm({ onLogin }: LoginFormProps) {
 
     const user = await findUserByName(sanitized);
     if (user) {
+      try {
+        await linkAuthToUser(user.id);
+      } catch {
+        // May fail if already linked to same session — that's fine
+      }
       onLogin(user);
     } else {
       setNotFound(true);
