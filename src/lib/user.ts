@@ -75,29 +75,50 @@ export async function createUser(name: string): Promise<VSUser> {
 
 
 /** Check if room has space (max 2 participants) */
-export async function joinRoom(roomId: string, userId: string): Promise<{ ok: boolean; error?: string }> {
-  // Check existing participants
-  const { data: participants } = await supabase
+
+export async function joinRoom(
+  roomId: string,
+  userId: string
+): Promise<{ ok: boolean; error?: string }> {
+
+  // Check current participants
+  const { data: participants, error } = await supabase
     .from('room_participants')
     .select('user_id')
     .eq('room_id', roomId);
 
-  const uniqueUsers = new Set((participants || []).map(p => p.user_id));
+  if (error) {
+    return { ok: false, error: error.message };
+  }
 
-  // Already in room
-  if (uniqueUsers.has(userId)) return { ok: true };
+  const count = participants?.length ?? 0;
+
+  // If user already inside
+  if (participants?.some(p => p.user_id === userId)) {
+    return { ok: true };
+  }
 
   // Room full
-  if (uniqueUsers.size >= 2) return { ok: false, error: 'Room is full (max 2 users)' };
+  if (count >= 2) {
+    return { ok: false, error: 'Room is full (max 2 users)' };
+  }
 
-  // Join
-  const { error } = await supabase
+  // Join room (if room does not exist, this creates first entry)
+  const { error: insertError } = await supabase
     .from('room_participants')
-    .insert({ room_id: roomId, user_id: userId });
+    .insert({
+      room_id: roomId,
+      user_id: userId,
+    });
 
-  if (error && error.code !== '23505') return { ok: false, error: error.message };
+  if (insertError) {
+    return { ok: false, error: insertError.message };
+  }
+
   return { ok: true };
 }
+
+
 
 /** Mark messages as seen */
 export async function markMessagesSeen(messageIds: string[], userId: string, roomId: string) {
