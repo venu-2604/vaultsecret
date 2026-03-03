@@ -215,9 +215,13 @@ export default function ChatRoom() {
 
     setMessages(prev => [...prev, { id: tempId, content: text, isOwn: true, timestamp: new Date().toISOString(), seen: false }]);
 
+    // Get the app user id (matches RLS policy: sender_id = get_app_user_id()::text)
+    const { data: appUserId } = await supabase.rpc('get_app_user_id');
+    const senderId = appUserId ? String(appUserId) : userId;
+
     await supabase.from('messages').insert({
       room_id: roomId,
-      sender_id: userId,
+      sender_id: senderId,
       encrypted_content: encrypted,
     });
   }, [encryptionKey, roomId, userId]);

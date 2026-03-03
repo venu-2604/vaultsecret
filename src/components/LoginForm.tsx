@@ -25,24 +25,39 @@ export default function LoginForm({ onLogin }: LoginFormProps) {
     setError('');
     setNotFound(false);
 
-    const user = await findUserByName(sanitized);
-    if (user) {
-      onLogin(user);
-    } else {
-      setNotFound(true);
+    try {
+      const user = await findUserByName(sanitized);
+      if (user) {
+        onLogin(user);
+      } else {
+        setNotFound(true);
+      }
+    } catch {
+      setError('Failed to verify user. Try again.');
     }
     setLoading(false);
   };
 
   const handleCreate = async () => {
     const sanitized = sanitizeName(name);
+    const validationError = validateName(sanitized);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
     setLoading(true);
     setError('');
     try {
       const user = await createUser(sanitized);
       onLogin(user);
-    } catch {
-      setError('Failed to create account. Try again.');
+    } catch (e: any) {
+      const msg = e?.message || '';
+      if (msg.includes('duplicate') || msg.includes('unique')) {
+        setError('This name is already taken.');
+      } else {
+        setError('Failed to create account. Try again.');
+      }
     }
     setLoading(false);
   };
