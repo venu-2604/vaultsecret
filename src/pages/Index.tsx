@@ -80,7 +80,7 @@ export default function Index() {
           className="glass-strong rounded-3xl p-8 glow-border"
         >
           {!user ? (
-            <LoginForm onLogin={login} />
+            <LoginForm onLogin={(u) => login(u)} />
           ) : (
             <div className="space-y-6">
               {/* Logged in user badge */}
