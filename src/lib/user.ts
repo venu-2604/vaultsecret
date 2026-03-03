@@ -33,81 +33,62 @@ export function clearUserId() {
   localStorage.removeItem(USER_KEY);
 }
 
-/** Ensure we have an anonymous Supabase session */
-export async function ensureAnonSession() {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) {
-    const { error } = await supabase.auth.signInAnonymously();
-    if (error) throw new Error('Failed to create session: ' + error.message);
-  }
-}
-
-/** Look up user by full_name using SECURITY DEFINER RPC (bypasses RLS) */
-export async function findUserByName(name: string): Promise<VSUser | null> {
-  const { data, error } = await supabase.rpc('get_user_by_name', { _name: name });
-  if (error || !data || data.length === 0) return null;
-  return data[0] as VSUser;
-}
-
-/** Get user by ID — requires auth session linked to this user */
 export async function getUserById(id: string): Promise<VSUser | null> {
   const { data } = await supabase
     .from('users')
-    .select('id, full_name, created_at')
+    .select('*')
     .eq('id', id)
+    .single();
+  return data as VSUser | null;
+}
+
+export async function findUserByName(name: string): Promise<VSUser | null> {
+  const { data } = await supabase
+    .from('users')
+    .select('*')
+    .eq('full_name', name)
     .maybeSingle();
   return data as VSUser | null;
 }
 
-/** Create a new user and link to current anonymous auth session */
 export async function createUser(name: string): Promise<VSUser> {
-  await ensureAnonSession();
-
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) throw new Error('No auth session');
-
   const { data, error } = await supabase
     .from('users')
-    .insert({ full_name: name, auth_uid: session.user.id })
-    .select('id, full_name, created_at')
+    .insert({ full_name: name })
+    .select()
     .single();
-
   if (error) throw error;
   return data as VSUser;
 }
 
-/** Link existing user to current anonymous auth session */
-export async function linkUserToSession(userId: string): Promise<void> {
-  await ensureAnonSession();
-  const { error } = await supabase.rpc('link_user_auth', { p_user_id: userId });
-  if (error) throw new Error('Failed to link user: ' + error.message);
-}
+/** Check if room has space (max 2 participants) */
+export async function joinRoom(roomId: string, userId: string): Promise<{ ok: boolean; error?: string }> {
+  // Check existing participants
+  const { data: participants } = await supabase
+    .from('room_participants')
+    .select('user_id')
+    .eq('room_id', roomId);
 
-/** Join room using SECURITY DEFINER RPC (enforces max 2 participants) */
-export async function joinRoom(roomId: string, _userId: string): Promise<{ ok: boolean; error?: string }> {
-  const { data, error } = await supabase.rpc('join_room', { p_room_id: roomId });
-  if (error) return { ok: false, error: error.message };
-  if (data === false) return { ok: false, error: 'Room is full (max 2 users)' };
+  const uniqueUsers = new Set((participants || []).map(p => p.user_id));
+
+  // Already in room
+  if (uniqueUsers.has(userId)) return { ok: true };
+
+  // Room full
+  if (uniqueUsers.size >= 2) return { ok: false, error: 'Room is full (max 2 users)' };
+
+  // Join
+  const { error } = await supabase
+    .from('room_participants')
+    .insert({ room_id: roomId, user_id: userId });
+
+  if (error && error.code !== '23505') return { ok: false, error: error.message };
   return { ok: true };
 }
 
 /** Mark messages as seen */
-export async function markMessagesSeen(messageIds: string[], _userId: string, roomId: string) {
+export async function markMessagesSeen(messageIds: string[], userId: string, roomId: string) {
   if (!messageIds.length) return;
-
-  // get_app_user_id is used by RLS, so we just need to insert with correct user_id
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) return;
-
-  // Get our app user id
-  const { data: appUserId } = await supabase.rpc('get_app_user_id');
-  if (!appUserId) return;
-
-  const rows = messageIds.map(mid => ({
-    message_id: mid,
-    user_id: appUserId,
-    room_id: roomId,
-  }));
-
+  const rows = messageIds.map(mid => ({ message_id: mid, user_id: userId, room_id: roomId }));
   await supabase.from('message_seen').insert(rows).select();
 }
