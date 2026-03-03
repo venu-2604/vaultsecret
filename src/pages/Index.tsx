@@ -68,7 +68,7 @@ export default function Index() {
             <span className="gradient-text text-glow">VaultSecret</span>
           </h1>
           <p className="text-muted-foreground text-lg font-light">
-            No Accounts. Just Secrets.
+            Between You and Me...
           </p>
         </motion.div>
 
