@@ -42,22 +42,40 @@ export async function getUserById(id: string): Promise<VSUser | null> {
   return data as VSUser | null;
 }
 
+
 export async function findUserByName(name: string): Promise<VSUser | null> {
+  const { data: authData } = await supabase.auth.getUser();
+  const authUser = authData.user;
+
+  if (!authUser) return null;
+
   const { data } = await supabase
     .from('users')
     .select('*')
     .eq('full_name', name)
+    .eq('auth_uid', authUser.id) // 🔥 important
     .maybeSingle();
+
   return data as VSUser | null;
 }
 
 export async function createUser(name: string): Promise<VSUser> {
+  const { data: authData } = await supabase.auth.getUser();
+  const authUser = authData.user;
+
+  if (!authUser) throw new Error("Not authenticated");
+
   const { data, error } = await supabase
     .from('users')
-    .insert({ full_name: name })
+    .insert({
+      full_name: name,
+      auth_uid: authUser.id, // 🔥 critical
+    })
     .select()
     .single();
+
   if (error) throw error;
+
   return data as VSUser;
 }
 
