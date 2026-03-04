@@ -10,6 +10,13 @@ import ChatMessage from '@/components/ChatMessage';
 import ChatInput from '@/components/ChatInput';
 import TypingIndicator from '@/components/TypingIndicator';
 
+interface ReplyInfo {
+  id: string;
+  content: string;
+  isOwn: boolean;
+  messageType: string;
+}
+
 interface Message {
   id: string;
   content: string;
@@ -17,6 +24,7 @@ interface Message {
   timestamp: string;
   seen: boolean;
   messageType: string;
+  replyToId?: string | null;
 }
 
 export default function ChatRoom() {
@@ -36,6 +44,7 @@ export default function ChatRoom() {
   const [blurred, setBlurred] = useState(false);
   const [roomError, setRoomError] = useState('');
   const [joined, setJoined] = useState(false);
+  const [replyTo, setReplyTo] = useState<ReplyInfo | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   const seenQueueRef = useRef<Set<string>>(new Set());
@@ -54,15 +63,12 @@ export default function ChatRoom() {
     deriveKey(password, roomId).then(setEncryptionKey);
   }, [password, roomId]);
 
-  // Join room (max 2 participants)
+  // Join room
   useEffect(() => {
     if (!roomId || !userId) return;
     joinRoom(roomId, userId).then(result => {
-      if (result.ok) {
-        setJoined(true);
-      } else {
-        setRoomError(result.error || 'Cannot join room');
-      }
+      if (result.ok) setJoined(true);
+      else setRoomError(result.error || 'Cannot join room');
     });
   }, [roomId, userId]);
 
@@ -73,7 +79,7 @@ export default function ChatRoom() {
     return () => document.removeEventListener('visibilitychange', handleVisibility);
   }, []);
 
-  // Load existing messages + seen status
+  // Load existing messages
   useEffect(() => {
     if (!roomId || !encryptionKey || !userId || !joined) return;
 
@@ -91,16 +97,14 @@ export default function ChatRoom() {
         .eq('room_id', roomId);
 
       const seenByOther = new Map<string, boolean>();
-      (seenData || []).forEach(s => {
-        seenByOther.set(s.message_id, true);
-      });
+      (seenData || []).forEach(s => seenByOther.set(s.message_id, true));
 
       if (data) {
         const decrypted = await Promise.all(
           data.map(async (msg) => {
             const isImage = msg.message_type === 'image';
             const content = isImage
-              ? msg.encrypted_content // image URLs stored as-is
+              ? msg.encrypted_content
               : await decryptMessage(msg.encrypted_content, encryptionKey);
             return {
               id: msg.id,
@@ -109,6 +113,7 @@ export default function ChatRoom() {
               timestamp: msg.created_at,
               seen: seenByOther.has(msg.id) && msg.sender_id === userId,
               messageType: msg.message_type,
+              replyToId: (msg as any).reply_to_id || null,
             };
           })
         );
@@ -129,11 +134,19 @@ export default function ChatRoom() {
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'messages', filter: `room_id=eq.${roomId}` },
         async (payload) => {
-          const msg = payload.new as { id: string; sender_id: string; encrypted_content: string; created_at: string; message_type: string };
+          const msg = payload.new as any;
           if (msg.sender_id === userId) return;
           const isImage = msg.message_type === 'image';
           const content = isImage ? msg.encrypted_content : await decryptMessage(msg.encrypted_content, encryptionKey);
-          setMessages(prev => [...prev, { id: msg.id, content, isOwn: false, timestamp: msg.created_at, seen: false, messageType: msg.message_type }]);
+          setMessages(prev => [...prev, {
+            id: msg.id,
+            content,
+            isOwn: false,
+            timestamp: msg.created_at,
+            seen: false,
+            messageType: msg.message_type,
+            replyToId: msg.reply_to_id || null,
+          }]);
         }
       )
       .subscribe();
@@ -141,10 +154,9 @@ export default function ChatRoom() {
     return () => { supabase.removeChannel(channel); };
   }, [roomId, encryptionKey, userId, joined]);
 
-  // Realtime: seen status updates
+  // Realtime: seen status
   useEffect(() => {
     if (!roomId || !userId || !joined) return;
-
     const channel = supabase
       .channel(`seen-${roomId}`)
       .on(
@@ -157,18 +169,15 @@ export default function ChatRoom() {
         }
       )
       .subscribe();
-
     return () => { supabase.removeChannel(channel); };
   }, [roomId, userId, joined]);
 
-  // Presence channel for typing & online
+  // Presence
   useEffect(() => {
     if (!roomId || !userId || !joined) return;
-
     const presence = supabase.channel(`presence-${roomId}`, {
       config: { presence: { key: userId } },
     });
-
     presence
       .on('presence', { event: 'sync' }, () => {
         const state = presence.presenceState();
@@ -183,11 +192,8 @@ export default function ChatRoom() {
         }
       })
       .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED') {
-          await presence.track({ online: true });
-        }
+        if (status === 'SUBSCRIBED') await presence.track({ online: true });
       });
-
     return () => { supabase.removeChannel(presence); };
   }, [roomId, userId, joined]);
 
@@ -210,23 +216,41 @@ export default function ChatRoom() {
     seenFlushRef.current = setTimeout(flushSeenQueue, 500);
   }, [flushSeenQueue]);
 
+  // Get reply info for a message by its replyToId
+  const getReplyInfo = useCallback((replyToId: string | null | undefined): ReplyInfo | null => {
+    if (!replyToId) return null;
+    const msg = messages.find(m => m.id === replyToId);
+    if (!msg) return null;
+    return { id: msg.id, content: msg.content, isOwn: msg.isOwn, messageType: msg.messageType };
+  }, [messages]);
+
   const handleSend = useCallback(async (text: string) => {
     if (!encryptionKey || !roomId || !userId) return;
     const encrypted = await encryptMessage(text, encryptionKey);
     const tempId = crypto.randomUUID();
+    const currentReplyToId = replyTo?.id || null;
 
-    setMessages(prev => [...prev, { id: tempId, content: text, isOwn: true, timestamp: new Date().toISOString(), seen: false, messageType: 'text' }]);
+    setMessages(prev => [...prev, {
+      id: tempId,
+      content: text,
+      isOwn: true,
+      timestamp: new Date().toISOString(),
+      seen: false,
+      messageType: 'text',
+      replyToId: currentReplyToId,
+    }]);
+    setReplyTo(null);
 
     await supabase.from('messages').insert({
       room_id: roomId,
       sender_id: userId,
       encrypted_content: encrypted,
-    });
-  }, [encryptionKey, roomId, userId]);
+      reply_to_id: currentReplyToId,
+    } as any);
+  }, [encryptionKey, roomId, userId, replyTo]);
 
   const handleSendImage = useCallback(async (file: File) => {
     if (!roomId || !userId) return;
-
     const ext = file.name.split('.').pop() || 'jpg';
     const path = `${roomId}/${crypto.randomUUID()}.${ext}`;
 
@@ -234,17 +258,12 @@ export default function ChatRoom() {
       .from('chat-media')
       .upload(path, file, { contentType: file.type });
 
-    if (uploadError) {
-      console.error('Upload failed:', uploadError);
-      return;
-    }
+    if (uploadError) { console.error('Upload failed:', uploadError); return; }
 
-    const { data: urlData } = supabase.storage
-      .from('chat-media')
-      .getPublicUrl(path);
-
+    const { data: urlData } = supabase.storage.from('chat-media').getPublicUrl(path);
     const publicUrl = urlData.publicUrl;
     const tempId = crypto.randomUUID();
+    const currentReplyToId = replyTo?.id || null;
 
     setMessages(prev => [...prev, {
       id: tempId,
@@ -253,15 +272,18 @@ export default function ChatRoom() {
       timestamp: new Date().toISOString(),
       seen: false,
       messageType: 'image',
+      replyToId: currentReplyToId,
     }]);
+    setReplyTo(null);
 
     await supabase.from('messages').insert({
       room_id: roomId,
       sender_id: userId,
       encrypted_content: publicUrl,
       message_type: 'image',
-    });
-  }, [roomId, userId]);
+      reply_to_id: currentReplyToId,
+    } as any);
+  }, [roomId, userId, replyTo]);
 
   const handleTyping = useCallback(() => {
     if (!roomId) return;
@@ -271,6 +293,10 @@ export default function ChatRoom() {
       payload: { senderId: userId },
     });
   }, [roomId, userId]);
+
+  const handleReply = useCallback((msg: ReplyInfo) => {
+    setReplyTo(msg);
+  }, []);
 
   const copyRoomId = () => {
     if (roomId) {
@@ -360,7 +386,9 @@ export default function ChatRoom() {
             timestamp={msg.timestamp}
             seen={msg.seen}
             messageType={msg.messageType}
+            replyTo={getReplyInfo(msg.replyToId)}
             onVisible={!msg.isOwn ? handleMessageVisible : undefined}
+            onReply={handleReply}
           />
         ))}
 
@@ -372,7 +400,14 @@ export default function ChatRoom() {
       </div>
 
       {/* Input */}
-      <ChatInput onSend={handleSend} onSendImage={handleSendImage} onTyping={handleTyping} disabled={!encryptionKey || !joined} />
+      <ChatInput
+        onSend={handleSend}
+        onSendImage={handleSendImage}
+        onTyping={handleTyping}
+        disabled={!encryptionKey || !joined}
+        replyTo={replyTo}
+        onCancelReply={() => setReplyTo(null)}
+      />
     </div>
   );
 }

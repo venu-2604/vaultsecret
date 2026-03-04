@@ -1,20 +1,34 @@
-import { useState, useRef, KeyboardEvent } from 'react';
-import { motion } from 'framer-motion';
+import { useState, useRef, useEffect, KeyboardEvent } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Send, ImagePlus, X, Loader2 } from 'lucide-react';
+
+interface ReplyInfo {
+  id: string;
+  content: string;
+  isOwn: boolean;
+  messageType: string;
+}
 
 interface ChatInputProps {
   onSend: (message: string) => void;
   onSendImage: (file: File) => Promise<void>;
   onTyping: () => void;
   disabled?: boolean;
+  replyTo?: ReplyInfo | null;
+  onCancelReply?: () => void;
 }
 
-export default function ChatInput({ onSend, onSendImage, onTyping, disabled }: ChatInputProps) {
+export default function ChatInput({ onSend, onSendImage, onTyping, disabled, replyTo, onCancelReply }: ChatInputProps) {
   const [text, setText] = useState('');
   const [imagePreview, setImagePreview] = useState<{ file: File; url: string } | null>(null);
   const [uploading, setUploading] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Focus input when replying
+  useEffect(() => {
+    if (replyTo) inputRef.current?.focus();
+  }, [replyTo]);
 
   const handleSend = async () => {
     if (uploading) return;
@@ -53,15 +67,10 @@ export default function ChatInput({ onSend, onSendImage, onTyping, disabled }: C
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    // Validate: images only, max 10MB
     if (!file.type.startsWith('image/')) return;
     if (file.size > 10 * 1024 * 1024) return;
-
     const url = URL.createObjectURL(file);
     setImagePreview({ file, url });
-
-    // Reset input
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -80,6 +89,37 @@ export default function ChatInput({ onSend, onSendImage, onTyping, disabled }: C
       animate={{ opacity: 1, y: 0 }}
       className="p-4"
     >
+      {/* Reply preview */}
+      <AnimatePresence>
+        {replyTo && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="mb-2 overflow-hidden"
+          >
+            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-primary/10 border-l-2 border-primary/50">
+              <div className="flex-1 min-w-0">
+                <span className="text-[10px] font-semibold text-primary block">
+                  Replying to {replyTo.isOwn ? 'yourself' : 'them'}
+                </span>
+                {replyTo.messageType === 'image' ? (
+                  <span className="text-xs text-muted-foreground italic">📷 Photo</span>
+                ) : (
+                  <p className="text-xs text-muted-foreground truncate">{replyTo.content}</p>
+                )}
+              </div>
+              <button
+                onClick={onCancelReply}
+                className="p-1 rounded-lg hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors shrink-0"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Image Preview */}
       {imagePreview && (
         <div className="mb-2 relative inline-block">
