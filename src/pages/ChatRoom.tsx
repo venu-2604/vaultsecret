@@ -16,6 +16,7 @@ interface Message {
   isOwn: boolean;
   timestamp: string;
   seen: boolean;
+  messageType: string;
 }
 
 export default function ChatRoom() {
@@ -84,18 +85,11 @@ export default function ChatRoom() {
         .order('created_at', { ascending: true })
         .limit(200);
 
-      // Load seen statuses
       const { data: seenData } = await supabase
         .from('message_seen')
         .select('message_id, user_id')
         .eq('room_id', roomId);
 
-      const seenMap = new Set<string>();
-      (seenData || []).forEach(s => {
-        if (s.user_id !== userId) return; // We care about OTHER user seeing OUR messages
-        // Actually, we want to know if the OTHER user saw each message
-      });
-      // Build map: messageId -> seen by someone other than sender
       const seenByOther = new Map<string, boolean>();
       (seenData || []).forEach(s => {
         seenByOther.set(s.message_id, true);
@@ -103,13 +97,20 @@ export default function ChatRoom() {
 
       if (data) {
         const decrypted = await Promise.all(
-          data.map(async (msg) => ({
-            id: msg.id,
-            content: await decryptMessage(msg.encrypted_content, encryptionKey),
-            isOwn: msg.sender_id === userId,
-            timestamp: msg.created_at,
-            seen: seenByOther.has(msg.id) && msg.sender_id === userId,
-          }))
+          data.map(async (msg) => {
+            const isImage = msg.message_type === 'image';
+            const content = isImage
+              ? msg.encrypted_content // image URLs stored as-is
+              : await decryptMessage(msg.encrypted_content, encryptionKey);
+            return {
+              id: msg.id,
+              content,
+              isOwn: msg.sender_id === userId,
+              timestamp: msg.created_at,
+              seen: seenByOther.has(msg.id) && msg.sender_id === userId,
+              messageType: msg.message_type,
+            };
+          })
         );
         setMessages(decrypted);
       }
@@ -128,10 +129,11 @@ export default function ChatRoom() {
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'messages', filter: `room_id=eq.${roomId}` },
         async (payload) => {
-          const msg = payload.new as { id: string; sender_id: string; encrypted_content: string; created_at: string };
+          const msg = payload.new as { id: string; sender_id: string; encrypted_content: string; created_at: string; message_type: string };
           if (msg.sender_id === userId) return;
-          const content = await decryptMessage(msg.encrypted_content, encryptionKey);
-          setMessages(prev => [...prev, { id: msg.id, content, isOwn: false, timestamp: msg.created_at, seen: false }]);
+          const isImage = msg.message_type === 'image';
+          const content = isImage ? msg.encrypted_content : await decryptMessage(msg.encrypted_content, encryptionKey);
+          setMessages(prev => [...prev, { id: msg.id, content, isOwn: false, timestamp: msg.created_at, seen: false, messageType: msg.message_type }]);
         }
       )
       .subscribe();
@@ -150,7 +152,7 @@ export default function ChatRoom() {
         { event: 'INSERT', schema: 'public', table: 'message_seen', filter: `room_id=eq.${roomId}` },
         (payload) => {
           const seen = payload.new as { message_id: string; user_id: string };
-          if (seen.user_id === userId) return; // Ignore own seen events
+          if (seen.user_id === userId) return;
           setMessages(prev => prev.map(m => m.id === seen.message_id ? { ...m, seen: true } : m));
         }
       )
@@ -213,7 +215,7 @@ export default function ChatRoom() {
     const encrypted = await encryptMessage(text, encryptionKey);
     const tempId = crypto.randomUUID();
 
-    setMessages(prev => [...prev, { id: tempId, content: text, isOwn: true, timestamp: new Date().toISOString(), seen: false }]);
+    setMessages(prev => [...prev, { id: tempId, content: text, isOwn: true, timestamp: new Date().toISOString(), seen: false, messageType: 'text' }]);
 
     await supabase.from('messages').insert({
       room_id: roomId,
@@ -221,6 +223,45 @@ export default function ChatRoom() {
       encrypted_content: encrypted,
     });
   }, [encryptionKey, roomId, userId]);
+
+  const handleSendImage = useCallback(async (file: File) => {
+    if (!roomId || !userId) return;
+
+    const ext = file.name.split('.').pop() || 'jpg';
+    const path = `${roomId}/${crypto.randomUUID()}.${ext}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('chat-media')
+      .upload(path, file, { contentType: file.type });
+
+    if (uploadError) {
+      console.error('Upload failed:', uploadError);
+      return;
+    }
+
+    const { data: urlData } = supabase.storage
+      .from('chat-media')
+      .getPublicUrl(path);
+
+    const publicUrl = urlData.publicUrl;
+    const tempId = crypto.randomUUID();
+
+    setMessages(prev => [...prev, {
+      id: tempId,
+      content: publicUrl,
+      isOwn: true,
+      timestamp: new Date().toISOString(),
+      seen: false,
+      messageType: 'image',
+    }]);
+
+    await supabase.from('messages').insert({
+      room_id: roomId,
+      sender_id: userId,
+      encrypted_content: publicUrl,
+      message_type: 'image',
+    });
+  }, [roomId, userId]);
 
   const handleTyping = useCallback(() => {
     if (!roomId) return;
@@ -318,6 +359,7 @@ export default function ChatRoom() {
             isOwn={msg.isOwn}
             timestamp={msg.timestamp}
             seen={msg.seen}
+            messageType={msg.messageType}
             onVisible={!msg.isOwn ? handleMessageVisible : undefined}
           />
         ))}
@@ -330,7 +372,7 @@ export default function ChatRoom() {
       </div>
 
       {/* Input */}
-      <ChatInput onSend={handleSend} onTyping={handleTyping} disabled={!encryptionKey || !joined} />
+      <ChatInput onSend={handleSend} onSendImage={handleSendImage} onTyping={handleTyping} disabled={!encryptionKey || !joined} />
     </div>
   );
 }
