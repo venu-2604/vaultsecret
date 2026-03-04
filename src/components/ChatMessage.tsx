@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Check, CheckCheck, X } from 'lucide-react';
+import { motion, AnimatePresence, useMotionValue, useTransform, PanInfo } from 'framer-motion';
+import { Check, CheckCheck, X, Reply } from 'lucide-react';
+
+interface ReplyInfo {
+  id: string;
+  content: string;
+  isOwn: boolean;
+  messageType: string;
+}
 
 interface ChatMessageProps {
   id: string;
@@ -9,12 +16,17 @@ interface ChatMessageProps {
   timestamp: string;
   seen?: boolean;
   messageType?: string;
+  replyTo?: ReplyInfo | null;
   onVisible?: (id: string) => void;
+  onReply?: (msg: { id: string; content: string; isOwn: boolean; messageType: string }) => void;
 }
 
-export default function ChatMessage({ id, content, isOwn, timestamp, seen, messageType = 'text', onVisible }: ChatMessageProps) {
+export default function ChatMessage({ id, content, isOwn, timestamp, seen, messageType = 'text', replyTo, onVisible, onReply }: ChatMessageProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [lightbox, setLightbox] = useState(false);
+  const x = useMotionValue(0);
+  const replyIconOpacity = useTransform(x, [0, 60], [0, 1]);
+  const replyIconScale = useTransform(x, [0, 60], [0.5, 1]);
 
   useEffect(() => {
     if (isOwn || !onVisible || !ref.current) return;
@@ -33,47 +45,88 @@ export default function ChatMessage({ id, content, isOwn, timestamp, seen, messa
 
   const isImage = messageType === 'image';
 
+  const handleDragEnd = (_: any, info: PanInfo) => {
+    if (info.offset.x > 60 && onReply) {
+      onReply({ id, content, isOwn, messageType });
+    }
+  };
+
   return (
     <>
-      <motion.div
-        ref={ref}
-        initial={{ opacity: 0, y: 16, scale: 0.95 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-        className={`flex ${isOwn ? 'justify-end' : 'justify-start'} px-4`}
-      >
-        <div
-          className={`max-w-[75%] rounded-2xl ${
-            isImage ? 'p-1' : 'px-4 py-2.5'
-          } ${
-            isOwn
-              ? isImage ? 'rounded-br-md' : 'gradient-primary text-primary-foreground rounded-br-md'
-              : isImage ? 'rounded-bl-md' : 'glass rounded-bl-md'
-          }`}
+      <div ref={ref} className={`relative flex ${isOwn ? 'justify-end' : 'justify-start'} px-4`}>
+        {/* Reply icon that appears on swipe */}
+        <motion.div
+          style={{ opacity: replyIconOpacity, scale: replyIconScale }}
+          className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center z-0"
         >
-          {isImage ? (
-            <img
-              src={content}
-              alt="Shared photo"
-              onClick={() => setLightbox(true)}
-              className="rounded-xl max-w-[280px] max-h-[320px] object-cover cursor-pointer hover:opacity-90 transition-opacity"
-              loading="lazy"
-            />
-          ) : (
-            <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{content}</p>
+          <Reply className="w-4 h-4 text-primary" />
+        </motion.div>
+
+        <motion.div
+          style={{ x }}
+          drag="x"
+          dragConstraints={{ left: 0, right: 80 }}
+          dragElastic={{ left: 0, right: 0.5 }}
+          dragSnapToOrigin
+          onDragEnd={handleDragEnd}
+          initial={{ opacity: 0, y: 16, scale: 0.95 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+          className={`max-w-[75%] z-[1] touch-pan-y`}
+        >
+          {/* Quoted reply bubble */}
+          {replyTo && (
+            <div
+              className={`mb-1 px-3 py-1.5 rounded-xl text-[11px] border-l-2 ${
+                isOwn
+                  ? 'bg-primary/10 border-primary/40 text-primary/80'
+                  : 'bg-muted/60 border-accent/40 text-muted-foreground'
+              }`}
+            >
+              <span className="font-semibold text-[10px] block mb-0.5">
+                {replyTo.isOwn ? 'You' : 'Them'}
+              </span>
+              {replyTo.messageType === 'image' ? (
+                <span className="italic">📷 Photo</span>
+              ) : (
+                <span className="line-clamp-2">{replyTo.content}</span>
+              )}
+            </div>
           )}
-          <div className={`flex items-center gap-1 mt-1 ${isImage ? 'px-2 pb-1' : ''} ${isOwn ? 'justify-end' : 'justify-start'}`}>
-            <span className={`text-[10px] opacity-60 font-mono ${isImage ? 'text-muted-foreground' : ''}`}>
-              {new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-            </span>
-            {isOwn && (
-              seen
-                ? <CheckCheck className="w-3.5 h-3.5 text-primary" />
-                : <CheckCheck className="w-3 h-3 opacity-50" />
+
+          <div
+            className={`rounded-2xl ${
+              isImage ? 'p-1' : 'px-4 py-2.5'
+            } ${
+              isOwn
+                ? isImage ? 'rounded-br-md' : 'gradient-primary text-primary-foreground rounded-br-md'
+                : isImage ? 'rounded-bl-md' : 'glass rounded-bl-md'
+            }`}
+          >
+            {isImage ? (
+              <img
+                src={content}
+                alt="Shared photo"
+                onClick={() => setLightbox(true)}
+                className="rounded-xl max-w-[280px] max-h-[320px] object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                loading="lazy"
+              />
+            ) : (
+              <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{content}</p>
             )}
+            <div className={`flex items-center gap-1 mt-1 ${isImage ? 'px-2 pb-1' : ''} ${isOwn ? 'justify-end' : 'justify-start'}`}>
+              <span className={`text-[10px] opacity-60 font-mono ${isImage ? 'text-muted-foreground' : ''}`}>
+                {new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </span>
+              {isOwn && (
+                seen
+                  ? <CheckCheck className="w-3.5 h-3.5 text-primary" />
+                  : <CheckCheck className="w-3 h-3 opacity-50" />
+              )}
+            </div>
           </div>
-        </div>
-      </motion.div>
+        </motion.div>
+      </div>
 
       {/* Lightbox */}
       <AnimatePresence>
