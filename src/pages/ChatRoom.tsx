@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { LogOut, Copy, Check, WifiOff } from 'lucide-react';
-import vsLogo from '@/assets/vs-logo.jpg';
+import vsLogo from '@/assets/vs-logo.png';
 import { supabase } from '@/integrations/supabase/client';
 import { deriveKey, encryptMessage, decryptMessage } from '@/lib/crypto';
 import { joinRoom, markMessagesSeen } from '@/lib/user';
