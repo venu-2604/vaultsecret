@@ -96,8 +96,10 @@ export default function ChatRoom() {
         .select('message_id, user_id')
         .eq('room_id', roomId);
 
-      const seenByOther = new Map<string, boolean>();
-      (seenData || []).forEach(s => seenByOther.set(s.message_id, true));
+      const seenByOther = new Set<string>();
+      (seenData || []).forEach(s => {
+        if (s.user_id !== userId) seenByOther.add(s.message_id);
+      });
 
       if (data) {
         const decrypted = await Promise.all(
@@ -111,7 +113,7 @@ export default function ChatRoom() {
               content,
               isOwn: msg.sender_id === userId,
               timestamp: msg.created_at,
-              seen: seenByOther.has(msg.id) && msg.sender_id === userId,
+              seen: msg.sender_id === userId && seenByOther.has(msg.id),
               messageType: msg.message_type,
               replyToId: (msg as any).reply_to_id || null,
             };
@@ -213,7 +215,7 @@ export default function ChatRoom() {
   const handleMessageVisible = useCallback((messageId: string) => {
     seenQueueRef.current.add(messageId);
     clearTimeout(seenFlushRef.current);
-    seenFlushRef.current = setTimeout(flushSeenQueue, 500);
+    seenFlushRef.current = setTimeout(flushSeenQueue, 300);
   }, [flushSeenQueue]);
 
   // Get reply info for a message by its replyToId

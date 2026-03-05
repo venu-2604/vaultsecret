@@ -56,6 +56,7 @@ export type Database = {
           encrypted_content: string
           id: string
           message_type: string
+          reply_to_id: string | null
           room_id: string
           sender_id: string
         }
@@ -64,6 +65,7 @@ export type Database = {
           encrypted_content: string
           id?: string
           message_type?: string
+          reply_to_id?: string | null
           room_id: string
           sender_id: string
         }
@@ -72,10 +74,19 @@ export type Database = {
           encrypted_content?: string
           id?: string
           message_type?: string
+          reply_to_id?: string | null
           room_id?: string
           sender_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "messages_reply_to_id_fkey"
+            columns: ["reply_to_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       room_participants: {
         Row: {
