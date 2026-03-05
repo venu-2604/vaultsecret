@@ -121,7 +121,7 @@ export default function ChatMessage({ id, content, isOwn, timestamp, seen, messa
               {isOwn && (
                 seen
                   ? <CheckCheck className="w-3.5 h-3.5 text-primary" />
-                  : <Check className="w-3 h-3 opacity-50" />
+                  : <CheckCheck className="w-3 h-3 opacity-50" />
               )}
             </div>
           </div>
