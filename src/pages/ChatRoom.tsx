@@ -25,6 +25,7 @@ interface Message {
   seen: boolean;
   messageType: string;
   replyToId?: string | null;
+  edited?: boolean;
 }
 
 export default function ChatRoom() {
@@ -115,6 +116,7 @@ export default function ChatRoom() {
               seen: msg.sender_id === userId && seenByOther.has(msg.id),
               messageType: msg.message_type,
               replyToId: (msg as any).reply_to_id || null,
+              edited: (msg as any).edited || false,
             };
           })
         );
@@ -125,7 +127,7 @@ export default function ChatRoom() {
     loadMessages();
   }, [roomId, encryptionKey, userId, joined]);
 
-  // Realtime: new messages
+  // Realtime: new messages + edits
   useEffect(() => {
     if (!roomId || !encryptionKey || !userId || !joined) return;
 
@@ -147,7 +149,18 @@ export default function ChatRoom() {
             seen: false,
             messageType: msg.message_type,
             replyToId: msg.reply_to_id || null,
+            edited: msg.edited || false,
           }]);
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'messages', filter: `room_id=eq.${roomId}` },
+        async (payload) => {
+          const msg = payload.new as any;
+          const isImage = msg.message_type === 'image';
+          const content = isImage ? msg.encrypted_content : await decryptMessage(msg.encrypted_content, encryptionKey);
+          setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, content, edited: msg.edited || false } : m));
         }
       )
       .subscribe();
@@ -299,6 +312,16 @@ export default function ChatRoom() {
     setReplyTo(msg);
   }, []);
 
+  const handleEdit = useCallback(async (messageId: string, newContent: string) => {
+    if (!encryptionKey || !roomId) return;
+    const encrypted = await encryptMessage(newContent, encryptionKey);
+    setMessages(prev => prev.map(m => m.id === messageId ? { ...m, content: newContent, edited: true } : m));
+    await supabase.from('messages').update({
+      encrypted_content: encrypted,
+      edited: true,
+    } as any).eq('id', messageId);
+  }, [encryptionKey, roomId]);
+
   const copyRoomId = () => {
     if (roomId) {
       navigator.clipboard.writeText(roomId.slice(0, 12) + '...');
@@ -387,9 +410,11 @@ export default function ChatRoom() {
             timestamp={msg.timestamp}
             seen={msg.seen}
             messageType={msg.messageType}
+            edited={msg.edited}
             replyTo={getReplyInfo(msg.replyToId)}
             onVisible={!msg.isOwn ? handleMessageVisible : undefined}
             onReply={handleReply}
+            onEdit={handleEdit}
           />
         ))}
 
