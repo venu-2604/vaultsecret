@@ -94,10 +94,11 @@ export default function ChatRoom() {
       const { data: seenData } = await supabase
         .from('message_seen')
         .select('message_id, user_id')
-        .eq('room_id', roomId);
+        .eq('room_id', roomId)
+        .neq('user_id', userId);
 
-      const seenByOther = new Map<string, boolean>();
-      (seenData || []).forEach(s => seenByOther.set(s.message_id, true));
+      const seenByOther = new Set<string>();
+      (seenData || []).forEach(s => seenByOther.add(s.message_id));
 
       if (data) {
         const decrypted = await Promise.all(
@@ -111,7 +112,7 @@ export default function ChatRoom() {
               content,
               isOwn: msg.sender_id === userId,
               timestamp: msg.created_at,
-              seen: seenByOther.has(msg.id) && msg.sender_id === userId,
+              seen: msg.sender_id === userId && seenByOther.has(msg.id),
               messageType: msg.message_type,
               replyToId: (msg as any).reply_to_id || null,
             };
