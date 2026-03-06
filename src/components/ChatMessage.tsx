@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence, useMotionValue, useTransform, PanInfo } from 'framer-motion';
-import { Check, CheckCheck, X } from 'lucide-react';
+import { Check, CheckCheck, X, Ban } from 'lucide-react';
 import MessageContextMenu from './MessageContextMenu';
 import { toast } from 'sonner';
 
@@ -25,46 +25,28 @@ interface ChatMessageProps {
   seen?: boolean;
   messageType?: string;
   edited?: boolean;
+  deletedForEveryone?: boolean;
   replyTo?: ReplyInfo | null;
   reactions?: Reaction[];
   onVisible?: (id: string) => void;
   onReply?: (msg: { id: string; content: string; isOwn: boolean; messageType: string }) => void;
   onEdit?: (id: string, content: string) => void;
-  onDelete?: (id: string) => void;
+  onDelete?: (id: string, mode: 'me' | 'everyone') => void;
   onReact?: (id: string, emoji: string) => void;
 }
 
 export default function ChatMessage({
   id, content, isOwn, timestamp, seen, messageType = 'text', edited,
-  replyTo, reactions, onVisible, onReply, onEdit, onDelete, onReact
+  deletedForEveryone, replyTo, reactions, onVisible, onReply, onEdit, onDelete, onReact
 }: ChatMessageProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [lightbox, setLightbox] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
-  const [editText, setEditText] = useState(content);
+  const [showDeleteOptions, setShowDeleteOptions] = useState(false);
   const x = useMotionValue(0);
   const replyIconOpacity = useTransform(x, [0, 60], [0, 1]);
   const replyIconScale = useTransform(x, [0, 60], [0.5, 1]);
 
   const canEdit = isOwn && messageType === 'text' && (Date.now() - new Date(timestamp).getTime()) < 10 * 60 * 1000;
-
-  const startEditing = () => {
-    setEditText(content);
-    setIsEditing(true);
-  };
-
-  const submitEdit = () => {
-    const trimmed = editText.trim();
-    if (trimmed && trimmed !== content && onEdit) {
-      onEdit(id, trimmed);
-    }
-    setIsEditing(false);
-  };
-
-  const cancelEdit = () => {
-    setIsEditing(false);
-    setEditText(content);
-  };
 
   useEffect(() => {
     if (isOwn || !onVisible || !ref.current) return;
@@ -84,6 +66,7 @@ export default function ChatMessage({
   const isImage = messageType === 'image';
 
   const handleDragEnd = (_: any, info: PanInfo) => {
+    if (deletedForEveryone) return;
     if (info.offset.x > 60 && onReply) {
       onReply({ id, content, isOwn, messageType });
     }
@@ -99,7 +82,26 @@ export default function ChatMessage({
   };
 
   const handleDelete = () => {
-    onDelete?.(id);
+    setShowDeleteOptions(true);
+  };
+
+  const handleDeleteForMe = () => {
+    onDelete?.(id, 'me');
+    setShowDeleteOptions(false);
+  };
+
+  const handleDeleteForEveryone = () => {
+    onDelete?.(id, 'everyone');
+    setShowDeleteOptions(false);
+  };
+  const handleEditClick = () => {
+    if (!onEdit) return;
+    onEdit(id, content);
+  };
+
+
+  const handleCancelDelete = () => {
+    setShowDeleteOptions(false);
   };
 
   const handleReact = (emoji: string) => {
@@ -119,7 +121,7 @@ export default function ChatMessage({
 
         <motion.div
           style={{ x }}
-          drag="x"
+          drag={deletedForEveryone ? false : 'x'}
           dragConstraints={{ left: 0, right: 80 }}
           dragElastic={{ left: 0, right: 0.5 }}
           dragSnapToOrigin
@@ -129,6 +131,39 @@ export default function ChatMessage({
           transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
           className="max-w-[75%] z-[1] touch-pan-y"
         >
+          {deletedForEveryone ? (
+            <MessageContextMenu
+              isOwn={isOwn}
+              canEdit={false}
+              messageType="text"
+              content=""
+              onReply={() => {}}
+              onEdit={() => {}}
+              onDelete={() => onDelete?.(id, 'me')}
+              onCopyText={() => {}}
+              onReact={() => {}}
+              deletedForEveryone
+            >
+              <div
+                className={`rounded-2xl px-4 py-2.5 bg-muted/50 border border-border/30 ${
+                  isOwn ? 'rounded-br-md' : 'rounded-bl-md'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Ban className="w-4 h-4 flex-shrink-0 text-muted-foreground" />
+                  <span className="text-sm italic text-muted-foreground">
+                    This message was deleted
+                  </span>
+                </div>
+                <div className={`flex items-center gap-1 mt-1 ${isOwn ? 'justify-end' : 'justify-start'}`}>
+                  <span className="text-[10px] opacity-60 font-mono text-muted-foreground">
+                    {new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}
+                  </span>
+                </div>
+              </div>
+            </MessageContextMenu>
+          ) : (
+            <>
           {/* Quoted reply bubble */}
           {replyTo && (
             <div
@@ -155,7 +190,7 @@ export default function ChatMessage({
             messageType={messageType}
             content={content}
             onReply={handleReply}
-            onEdit={startEditing}
+            onEdit={handleEditClick}
             onDelete={handleDelete}
             onCopyText={handleCopyText}
             onReact={handleReact}
@@ -169,26 +204,7 @@ export default function ChatMessage({
                   : isImage ? 'rounded-bl-md' : 'glass rounded-bl-md'
               }`}
             >
-              {isEditing ? (
-                <div className="flex flex-col gap-1.5 min-w-[180px]">
-                  <textarea
-                    autoFocus
-                    value={editText}
-                    onChange={(e) => setEditText(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitEdit(); } if (e.key === 'Escape') cancelEdit(); }}
-                    className="bg-background/20 text-sm rounded-lg px-2 py-1.5 outline-none resize-none text-inherit"
-                    rows={2}
-                  />
-                  <div className="flex items-center gap-1 justify-end">
-                    <button onClick={cancelEdit} className="p-1 rounded-lg hover:bg-background/20 transition-colors">
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                    <button onClick={submitEdit} className="p-1 rounded-lg hover:bg-background/20 transition-colors">
-                      <Check className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              ) : isImage ? (
+              {isImage ? (
                 <img
                   src={content}
                   alt="Shared photo"
@@ -204,7 +220,7 @@ export default function ChatMessage({
                   <span className="text-[9px] opacity-50 italic mr-0.5">edited</span>
                 )}
                 <span className={`text-[10px] opacity-60 font-mono ${isImage ? 'text-muted-foreground' : ''}`}>
-                  {new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  {new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}
                 </span>
                 {isOwn && (
                   seen
@@ -234,8 +250,56 @@ export default function ChatMessage({
               ))}
             </div>
           )}
+            </>
+          )}
         </motion.div>
       </div>
+
+      <AnimatePresence>
+        {showDeleteOptions && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-background/70 backdrop-blur-sm flex items-center justify-center px-6"
+            onClick={handleCancelDelete}
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 8 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 8 }}
+              transition={{ duration: 0.18, ease: 'easeOut' }}
+              className="w-full max-w-xs rounded-2xl bg-popover border border-border/40 shadow-2xl p-4 space-y-3"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="text-sm font-semibold">Delete message?</h3>
+              <p className="text-xs text-muted-foreground">
+                Choose how you want to delete this message.
+              </p>
+              <div className="flex flex-col gap-2 pt-1">
+                <button
+                  onClick={handleDeleteForMe}
+                  className="w-full rounded-lg px-3 py-2 text-sm font-medium bg-muted/60 hover:bg-muted transition-colors text-foreground text-left"
+                >
+                  Delete for me
+                </button>
+                <button
+                  onClick={handleDeleteForEveryone}
+                  className="w-full rounded-lg px-3 py-2 text-sm font-medium bg-destructive/10 hover:bg-destructive/15 text-destructive transition-colors text-left"
+                >
+                  Delete for everyone
+                </button>
+                <button
+                  onClick={handleCancelDelete}
+                  className="w-full rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted/60 transition-colors text-left"
+                >
+                  Cancel
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Lightbox */}
       <AnimatePresence>

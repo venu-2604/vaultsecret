@@ -15,6 +15,7 @@ interface MessageContextMenuProps {
   onDelete: () => void;
   onCopyText: () => void;
   onReact: (emoji: string) => void;
+  deletedForEveryone?: boolean;
   children: React.ReactNode;
 }
 
@@ -28,6 +29,7 @@ export default function MessageContextMenu({
   onDelete,
   onCopyText,
   onReact,
+  deletedForEveryone,
   children,
 }: MessageContextMenuProps) {
   const [open, setOpen] = useState(false);
@@ -129,6 +131,8 @@ export default function MessageContextMenu({
               <div className={`bg-popover border border-border/50 shadow-2xl overflow-hidden ${
                 isMobile ? 'rounded-2xl' : 'rounded-xl min-w-[180px]'
               }`}>
+                {!deletedForEveryone && (
+                  <>
                 {/* Emoji reactions row */}
                 <div className="px-3 py-2.5 border-b border-border/30">
                   {!showEmojiPicker ? (
@@ -185,6 +189,19 @@ export default function MessageContextMenu({
                     />
                   )}
                 </div>
+                  </>
+                )}
+
+                {deletedForEveryone && (
+                  <div className="py-1">
+                    <MenuOption
+                      icon={<Trash2 className="w-4 h-4" />}
+                      label="Delete for me"
+                      onClick={() => handleAction(onDelete)}
+                      destructive
+                    />
+                  </div>
+                )}
 
                 {/* Close button for mobile */}
                 {isMobile && (

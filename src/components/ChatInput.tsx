@@ -16,9 +16,20 @@ interface ChatInputProps {
   disabled?: boolean;
   replyTo?: ReplyInfo | null;
   onCancelReply?: () => void;
+  editingMessage?: { id: string; content: string } | null;
+  onCancelEdit?: () => void;
 }
 
-export default function ChatInput({ onSend, onSendImage, onTyping, disabled, replyTo, onCancelReply }: ChatInputProps) {
+export default function ChatInput({
+  onSend,
+  onSendImage,
+  onTyping,
+  disabled,
+  replyTo,
+  onCancelReply,
+  editingMessage,
+  onCancelEdit,
+}: ChatInputProps) {
   const [text, setText] = useState('');
   const [imagePreview, setImagePreview] = useState<{ file: File; url: string } | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -29,6 +40,14 @@ export default function ChatInput({ onSend, onSendImage, onTyping, disabled, rep
   useEffect(() => {
     if (replyTo) inputRef.current?.focus();
   }, [replyTo]);
+
+  // Prefill and focus when editing a message
+  useEffect(() => {
+    if (editingMessage) {
+      setText(editingMessage.content);
+      inputRef.current?.focus();
+    }
+  }, [editingMessage]);
 
   const handleSend = async () => {
     if (uploading) return;
@@ -89,6 +108,35 @@ export default function ChatInput({ onSend, onSendImage, onTyping, disabled, rep
       animate={{ opacity: 1, y: 0 }}
       className="p-4"
     >
+      {/* Edit preview */}
+      <AnimatePresence>
+        {editingMessage && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="mb-2 overflow-hidden"
+          >
+            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-500/10 border-l-2 border-amber-500/60">
+              <div className="flex-1 min-w-0">
+                <span className="text-[10px] font-semibold text-amber-500 block">
+                  Editing message
+                </span>
+                <p className="text-xs text-muted-foreground truncate">
+                  {editingMessage.content}
+                </p>
+              </div>
+              <button
+                onClick={onCancelEdit}
+                className="p-1 rounded-lg hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors shrink-0"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Reply preview */}
       <AnimatePresence>
         {replyTo && (

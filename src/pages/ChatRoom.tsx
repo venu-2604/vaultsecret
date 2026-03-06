@@ -10,6 +10,7 @@ import ChatMessage from '@/components/ChatMessage';
 import ChatInput from '@/components/ChatInput';
 import TypingIndicator from '@/components/TypingIndicator';
 import { toast } from 'sonner';
+import { format, isToday, isYesterday } from 'date-fns';
 
 interface ReplyInfo {
   id: string;
@@ -33,6 +34,7 @@ interface Message {
   messageType: string;
   replyToId?: string | null;
   edited?: boolean;
+  deletedForEveryone?: boolean;
   reactions: Reaction[];
 }
 
@@ -46,6 +48,7 @@ export default function ChatRoom() {
   const userName = state?.userName;
 
   const [messages, setMessages] = useState<Message[]>([]);
+  const [hiddenMessageIds, setHiddenMessageIds] = useState<Set<string>>(() => new Set());
   const [encryptionKey, setEncryptionKey] = useState<CryptoKey | null>(null);
   const [isTyping, setIsTyping] = useState(false);
   const [peerOnline, setPeerOnline] = useState(false);
@@ -54,10 +57,14 @@ export default function ChatRoom() {
   const [roomError, setRoomError] = useState('');
   const [joined, setJoined] = useState(false);
   const [replyTo, setReplyTo] = useState<ReplyInfo | null>(null);
+  const [editingMessage, setEditingMessage] = useState<{ id: string; content: string } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const initialScrollDoneRef = useRef(false);
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   const seenQueueRef = useRef<Set<string>>(new Set());
   const seenFlushRef = useRef<ReturnType<typeof setTimeout>>();
+
+  const visibleMessages = messages.filter(msg => !hiddenMessageIds.has(msg.id));
 
   // Redirect if missing data
   useEffect(() => {
@@ -118,6 +125,12 @@ export default function ChatRoom() {
         .eq('room_id', roomId)
         .neq('user_id', userId);
 
+      const { data: hiddenData } = await (supabase as any)
+        .from('message_hidden')
+        .select('message_id')
+        .eq('room_id', roomId)
+        .eq('user_id', userId);
+
       // Load all reactions for this room's messages
       const msgIds = (data || []).map(m => m.id);
       let reactionsMap = new Map<string, { emoji: string; user_id: string }[]>();
@@ -158,6 +171,10 @@ export default function ChatRoom() {
         );
         setMessages(decrypted);
       }
+
+      if (hiddenData) {
+        setHiddenMessageIds(new Set((hiddenData as any[]).map((h: any) => h.message_id)));
+      }
     };
 
     loadMessages();
@@ -197,7 +214,18 @@ export default function ChatRoom() {
           const msg = payload.new as any;
           const isImage = msg.message_type === 'image';
           const content = isImage ? msg.encrypted_content : await decryptMessage(msg.encrypted_content, encryptionKey);
-          setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, content, edited: msg.edited || false } : m));
+          setMessages(prev =>
+            prev.map(m =>
+              m.id === msg.id
+                ? {
+                    ...m,
+                    content,
+                    edited: msg.edited || false,
+                    timestamp: msg.created_at || m.timestamp,
+                  }
+                : m
+            )
+          );
         }
       )
       .on(
@@ -205,7 +233,11 @@ export default function ChatRoom() {
         { event: 'DELETE', schema: 'public', table: 'messages', filter: `room_id=eq.${roomId}` },
         (payload) => {
           const old = payload.old as any;
-          setMessages(prev => prev.filter(m => m.id !== old.id));
+          setMessages(prev =>
+            prev.map(m =>
+              m.id === old.id ? { ...m, deletedForEveryone: true } : m
+            )
+          );
         }
       )
       .subscribe();
@@ -255,6 +287,28 @@ export default function ChatRoom() {
     return () => { supabase.removeChannel(channel); };
   }, [roomId, userId, joined]);
 
+  // Realtime: per-user hidden messages ("Delete for me")
+  useEffect(() => {
+    if (!roomId || !userId || !joined) return;
+    const channel = (supabase as any)
+      .channel(`hidden-${roomId}-${userId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'message_hidden', filter: `room_id=eq.${roomId}` },
+        (payload: any) => {
+          const hidden = payload.new as { message_id: string; user_id: string };
+          if (hidden.user_id !== userId) return;
+          setHiddenMessageIds(prev => {
+            const next = new Set(prev);
+            next.add(hidden.message_id);
+            return next;
+          });
+        }
+      )
+      .subscribe();
+    return () => { (supabase as any).removeChannel(channel); };
+  }, [roomId, userId, joined]);
+
   // Presence
   useEffect(() => {
     if (!roomId || !userId || !joined) return;
@@ -274,6 +328,15 @@ export default function ChatRoom() {
           typingTimeoutRef.current = setTimeout(() => setIsTyping(false), 2000);
         }
       })
+      .on('broadcast', { event: 'message_deleted' }, (payload) => {
+        const messageId = payload.payload?.messageId;
+        if (!messageId) return;
+        setMessages(prev =>
+          prev.map(m =>
+            m.id === messageId ? { ...m, deletedForEveryone: true } : m
+          )
+        );
+      })
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED') await presence.track({ online: true });
       });
@@ -282,8 +345,13 @@ export default function ChatRoom() {
 
   // Auto-scroll
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isTyping]);
+    if (!messagesEndRef.current) return;
+    const behavior: ScrollBehavior = initialScrollDoneRef.current ? 'smooth' : 'auto';
+    messagesEndRef.current.scrollIntoView({ behavior });
+    if (!initialScrollDoneRef.current && visibleMessages.length > 0) {
+      initialScrollDoneRef.current = true;
+    }
+  }, [visibleMessages.length, isTyping]);
 
   // Flush seen queue
   const flushSeenQueue = useCallback(() => {
@@ -303,34 +371,83 @@ export default function ChatRoom() {
     if (!replyToId) return null;
     const msg = messages.find(m => m.id === replyToId);
     if (!msg) return null;
-    return { id: msg.id, content: msg.content, isOwn: msg.isOwn, messageType: msg.messageType };
+    return {
+      id: msg.id,
+      content: msg.deletedForEveryone ? 'This message was deleted' : msg.content,
+      isOwn: msg.isOwn,
+      messageType: msg.deletedForEveryone ? 'text' : msg.messageType,
+    };
   }, [messages]);
 
-  const handleSend = useCallback(async (text: string) => {
-    if (!encryptionKey || !roomId || !userId) return;
-    const encrypted = await encryptMessage(text, encryptionKey);
-    const tempId = crypto.randomUUID();
-    const currentReplyToId = replyTo?.id || null;
+  const handleEdit = useCallback(
+    async (messageId: string, newContent: string) => {
+      if (!encryptionKey || !roomId) return;
+      const encrypted = await encryptMessage(newContent, encryptionKey);
+      const editedAt = new Date().toISOString();
 
-    setMessages(prev => [...prev, {
-      id: tempId,
-      content: text,
-      isOwn: true,
-      timestamp: new Date().toISOString(),
-      seen: false,
-      messageType: 'text',
-      replyToId: currentReplyToId,
-      reactions: [],
-    }]);
-    setReplyTo(null);
+      setMessages(prev =>
+        prev.map(m =>
+          m.id === messageId
+            ? { ...m, content: newContent, edited: true, timestamp: editedAt }
+            : m
+        )
+      );
 
-    await supabase.from('messages').insert({
-      room_id: roomId,
-      sender_id: userId,
-      encrypted_content: encrypted,
-      reply_to_id: currentReplyToId,
-    } as any);
-  }, [encryptionKey, roomId, userId, replyTo]);
+      await supabase
+        .from('messages')
+        .update({
+          encrypted_content: encrypted,
+          edited: true,
+          created_at: editedAt,
+        } as any)
+        .eq('id', messageId);
+    },
+    [encryptionKey, roomId]
+  );
+
+  const handleSend = useCallback(
+    async (text: string) => {
+      if (!roomId || !userId) return;
+
+      // If we are editing an existing message, update instead of sending a new one
+      if (editingMessage) {
+        await handleEdit(editingMessage.id, text);
+        setEditingMessage(null);
+        return;
+      }
+
+      if (!encryptionKey) return;
+      const encrypted = await encryptMessage(text, encryptionKey);
+      const messageId = crypto.randomUUID();
+      const currentReplyToId = replyTo?.id || null;
+      const createdAt = new Date().toISOString();
+
+      setMessages(prev => [
+        ...prev,
+        {
+          id: messageId,
+          content: text,
+          isOwn: true,
+          timestamp: createdAt,
+          seen: false,
+          messageType: 'text',
+          replyToId: currentReplyToId,
+          reactions: [],
+        },
+      ]);
+      setReplyTo(null);
+
+      await supabase.from('messages').insert({
+        id: messageId,
+        room_id: roomId,
+        sender_id: userId,
+        encrypted_content: encrypted,
+        reply_to_id: currentReplyToId,
+        created_at: createdAt,
+      } as any);
+    },
+    [editingMessage, handleEdit, encryptionKey, roomId, userId, replyTo]
+  );
 
   const handleSendImage = useCallback(async (file: File) => {
     if (!roomId || !userId) return;
@@ -345,11 +462,11 @@ export default function ChatRoom() {
 
     const { data: urlData } = supabase.storage.from('chat-media').getPublicUrl(path);
     const publicUrl = urlData.publicUrl;
-    const tempId = crypto.randomUUID();
+    const messageId = crypto.randomUUID();
     const currentReplyToId = replyTo?.id || null;
 
     setMessages(prev => [...prev, {
-      id: tempId,
+      id: messageId,
       content: publicUrl,
       isOwn: true,
       timestamp: new Date().toISOString(),
@@ -361,6 +478,7 @@ export default function ChatRoom() {
     setReplyTo(null);
 
     await supabase.from('messages').insert({
+      id: messageId,
       room_id: roomId,
       sender_id: userId,
       encrypted_content: publicUrl,
@@ -382,24 +500,62 @@ export default function ChatRoom() {
     setReplyTo(msg);
   }, []);
 
-  const handleEdit = useCallback(async (messageId: string, newContent: string) => {
-    if (!encryptionKey || !roomId) return;
-    const encrypted = await encryptMessage(newContent, encryptionKey);
-    setMessages(prev => prev.map(m => m.id === messageId ? { ...m, content: newContent, edited: true } : m));
-    await supabase.from('messages').update({
-      encrypted_content: encrypted,
-      edited: true,
-    } as any).eq('id', messageId);
-  }, [encryptionKey, roomId]);
+  const handleStartEdit = useCallback(
+    (messageId: string, content: string) => {
+      setReplyTo(null);
+      setEditingMessage({ id: messageId, content });
+    },
+    []
+  );
 
-  const handleDelete = useCallback(async (messageId: string) => {
-    setMessages(prev => prev.filter(m => m.id !== messageId));
-    const { error } = await supabase.from('messages').delete().eq('id', messageId);
-    if (error) {
-      toast.error('Failed to delete message');
-      console.error('Delete error:', error);
-    }
-  }, []);
+  const handleDelete = useCallback(
+    async (messageId: string, mode: 'me' | 'everyone') => {
+      if (!roomId || !userId) return;
+
+      if (mode === 'me') {
+        setHiddenMessageIds(prev => {
+          const next = new Set(prev);
+          next.add(messageId);
+          return next;
+        });
+
+        const { error } = await (supabase as any).from('message_hidden').upsert({
+          room_id: roomId,
+          user_id: userId,
+          message_id: messageId,
+        });
+
+        if (error) {
+          toast.error('Failed to hide message');
+          console.error('Hide error:', error);
+        }
+
+        return;
+      }
+
+      setMessages(prev =>
+        prev.map(m =>
+          m.id === messageId ? { ...m, deletedForEveryone: true } : m
+        )
+      );
+      supabase.channel(`presence-${roomId}`).send({
+        type: 'broadcast',
+        event: 'message_deleted',
+        payload: { messageId },
+      });
+      const { error } = await supabase.from('messages').delete().eq('id', messageId);
+      if (error) {
+        toast.error('Failed to delete message');
+        console.error('Delete error:', error);
+        setMessages(prev =>
+          prev.map(m =>
+            m.id === messageId ? { ...m, deletedForEveryone: false } : m
+          )
+        );
+      }
+    },
+    [roomId, userId]
+  );
 
   const handleReact = useCallback(async (messageId: string, emoji: string) => {
     if (!userId) return;
@@ -458,6 +614,20 @@ export default function ChatRoom() {
     );
   }
 
+  const getMessageDateLabel = (isoTimestamp: string) => {
+    const d = new Date(isoTimestamp);
+    if (Number.isNaN(d.getTime())) return '';
+    if (isToday(d)) return 'Today';
+    if (isYesterday(d)) return 'Yesterday';
+    return format(d, 'MMM d, yyyy');
+  };
+
+  const getMessageDayKey = (isoTimestamp: string) => {
+    const d = new Date(isoTimestamp);
+    if (Number.isNaN(d.getTime())) return isoTimestamp;
+    return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+  };
+
   return (
     <div className={`h-screen flex flex-col bg-background transition-all duration-300 ${blurred ? 'blur-lg' : ''}`}>
       {/* Header */}
@@ -504,7 +674,7 @@ export default function ChatRoom() {
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto py-4 space-y-2">
-        {messages.length === 0 && (
+        {visibleMessages.length === 0 && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }} className="flex flex-col items-center justify-center h-full text-center px-6">
             <div className="w-12 h-12 rounded-2xl overflow-hidden mb-4">
               <img src={vsLogo} alt="VaultSecret logo" className="w-full h-full object-cover" />
@@ -514,25 +684,35 @@ export default function ChatRoom() {
           </motion.div>
         )}
 
-        {messages.map(msg => (
-          <ChatMessage
-            key={msg.id}
-            id={msg.id}
-            content={msg.content}
-            isOwn={msg.isOwn}
-            timestamp={msg.timestamp}
-            seen={msg.seen}
-            messageType={msg.messageType}
-            edited={msg.edited}
-            replyTo={getReplyInfo(msg.replyToId)}
-            reactions={msg.reactions}
-            onVisible={!msg.isOwn ? handleMessageVisible : undefined}
-            onReply={handleReply}
-            onEdit={handleEdit}
-            onDelete={handleDelete}
-            onReact={handleReact}
-          />
-        ))}
+        {visibleMessages.map((msg, idx) => {
+          const currentDayKey = getMessageDayKey(msg.timestamp);
+          const prevDayKey = idx > 0 ? getMessageDayKey(visibleMessages[idx - 1].timestamp) : null;
+          const showDivider = idx === 0 || currentDayKey !== prevDayKey;
+          const label = showDivider ? getMessageDateLabel(msg.timestamp) : '';
+
+          return (
+            <div key={msg.id}>
+              {showDivider && label && <DateDivider label={label} />}
+              <ChatMessage
+                id={msg.id}
+                content={msg.content}
+                isOwn={msg.isOwn}
+                timestamp={msg.timestamp}
+                seen={msg.seen}
+                messageType={msg.messageType}
+                edited={msg.edited}
+                deletedForEveryone={msg.deletedForEveryone}
+                replyTo={getReplyInfo(msg.replyToId)}
+                reactions={msg.reactions}
+                onVisible={!msg.isOwn ? handleMessageVisible : undefined}
+                onReply={handleReply}
+                onEdit={handleStartEdit}
+                onDelete={handleDelete}
+                onReact={handleReact}
+              />
+            </div>
+          );
+        })}
 
         <AnimatePresence>
           {isTyping && <TypingIndicator />}
@@ -549,7 +729,19 @@ export default function ChatRoom() {
         disabled={!encryptionKey || !joined}
         replyTo={replyTo}
         onCancelReply={() => setReplyTo(null)}
+        editingMessage={editingMessage}
+        onCancelEdit={() => setEditingMessage(null)}
       />
+    </div>
+  );
+}
+
+function DateDivider({ label }: { label: string }) {
+  return (
+    <div className="flex items-center justify-center py-2">
+      <div className="px-3 py-1 rounded-full bg-muted/60 border border-border/30 text-[11px] font-medium text-muted-foreground">
+        {label}
+      </div>
     </div>
   );
 }
