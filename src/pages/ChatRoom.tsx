@@ -9,12 +9,19 @@ import { joinRoom, markMessagesSeen } from '@/lib/user';
 import ChatMessage from '@/components/ChatMessage';
 import ChatInput from '@/components/ChatInput';
 import TypingIndicator from '@/components/TypingIndicator';
+import { toast } from 'sonner';
 
 interface ReplyInfo {
   id: string;
   content: string;
   isOwn: boolean;
   messageType: string;
+}
+
+interface Reaction {
+  emoji: string;
+  count: number;
+  reacted: boolean;
 }
 
 interface Message {
@@ -26,6 +33,7 @@ interface Message {
   messageType: string;
   replyToId?: string | null;
   edited?: boolean;
+  reactions: Reaction[];
 }
 
 export default function ChatRoom() {
@@ -80,6 +88,18 @@ export default function ChatRoom() {
     return () => document.removeEventListener('visibilitychange', handleVisibility);
   }, []);
 
+  // Helper to aggregate reactions
+  const aggregateReactions = (reactionRows: { emoji: string; user_id: string }[], currentUserId: string): Reaction[] => {
+    const map = new Map<string, { count: number; reacted: boolean }>();
+    for (const r of reactionRows) {
+      const existing = map.get(r.emoji) || { count: 0, reacted: false };
+      existing.count++;
+      if (r.user_id === currentUserId) existing.reacted = true;
+      map.set(r.emoji, existing);
+    }
+    return Array.from(map.entries()).map(([emoji, data]) => ({ emoji, ...data }));
+  };
+
   // Load existing messages
   useEffect(() => {
     if (!roomId || !encryptionKey || !userId || !joined) return;
@@ -97,6 +117,21 @@ export default function ChatRoom() {
         .select('message_id, user_id')
         .eq('room_id', roomId)
         .neq('user_id', userId);
+
+      // Load all reactions for this room's messages
+      const msgIds = (data || []).map(m => m.id);
+      let reactionsMap = new Map<string, { emoji: string; user_id: string }[]>();
+      if (msgIds.length > 0) {
+        const { data: reactionsData } = await (supabase as any)
+          .from('message_reactions')
+          .select('message_id, emoji, user_id')
+          .in('message_id', msgIds);
+        for (const r of (reactionsData || []) as any[]) {
+          const existing = reactionsMap.get(r.message_id) || [];
+          existing.push({ emoji: r.emoji, user_id: r.user_id });
+          reactionsMap.set(r.message_id, existing);
+        }
+      }
 
       const seenByOther = new Set<string>();
       (seenData || []).forEach(s => seenByOther.add(s.message_id));
@@ -117,6 +152,7 @@ export default function ChatRoom() {
               messageType: msg.message_type,
               replyToId: (msg as any).reply_to_id || null,
               edited: (msg as any).edited || false,
+              reactions: aggregateReactions(reactionsMap.get(msg.id) || [], userId),
             };
           })
         );
@@ -127,7 +163,7 @@ export default function ChatRoom() {
     loadMessages();
   }, [roomId, encryptionKey, userId, joined]);
 
-  // Realtime: new messages + edits
+  // Realtime: new messages + edits + deletes
   useEffect(() => {
     if (!roomId || !encryptionKey || !userId || !joined) return;
 
@@ -150,6 +186,7 @@ export default function ChatRoom() {
             messageType: msg.message_type,
             replyToId: msg.reply_to_id || null,
             edited: msg.edited || false,
+            reactions: [],
           }]);
         }
       )
@@ -161,6 +198,14 @@ export default function ChatRoom() {
           const isImage = msg.message_type === 'image';
           const content = isImage ? msg.encrypted_content : await decryptMessage(msg.encrypted_content, encryptionKey);
           setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, content, edited: msg.edited || false } : m));
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'messages', filter: `room_id=eq.${roomId}` },
+        (payload) => {
+          const old = payload.old as any;
+          setMessages(prev => prev.filter(m => m.id !== old.id));
         }
       )
       .subscribe();
@@ -180,6 +225,30 @@ export default function ChatRoom() {
           const seen = payload.new as { message_id: string; user_id: string };
           if (seen.user_id === userId) return;
           setMessages(prev => prev.map(m => m.id === seen.message_id ? { ...m, seen: true } : m));
+        }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [roomId, userId, joined]);
+
+  // Realtime: reactions
+  useEffect(() => {
+    if (!roomId || !userId || !joined) return;
+    const channel = supabase
+      .channel(`reactions-${roomId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'message_reactions' },
+        async (payload) => {
+          // Reload reactions for the affected message
+          const msgId = (payload.new as any)?.message_id || (payload.old as any)?.message_id;
+          if (!msgId) return;
+          const { data } = await (supabase as any)
+            .from('message_reactions')
+            .select('emoji, user_id')
+            .eq('message_id', msgId);
+          const reactions = aggregateReactions(((data || []) as any[]).map((r: any) => ({ emoji: r.emoji, user_id: r.user_id })), userId);
+          setMessages(prev => prev.map(m => m.id === msgId ? { ...m, reactions } : m));
         }
       )
       .subscribe();
@@ -230,7 +299,6 @@ export default function ChatRoom() {
     seenFlushRef.current = setTimeout(flushSeenQueue, 500);
   }, [flushSeenQueue]);
 
-  // Get reply info for a message by its replyToId
   const getReplyInfo = useCallback((replyToId: string | null | undefined): ReplyInfo | null => {
     if (!replyToId) return null;
     const msg = messages.find(m => m.id === replyToId);
@@ -252,6 +320,7 @@ export default function ChatRoom() {
       seen: false,
       messageType: 'text',
       replyToId: currentReplyToId,
+      reactions: [],
     }]);
     setReplyTo(null);
 
@@ -287,6 +356,7 @@ export default function ChatRoom() {
       seen: false,
       messageType: 'image',
       replyToId: currentReplyToId,
+      reactions: [],
     }]);
     setReplyTo(null);
 
@@ -321,6 +391,49 @@ export default function ChatRoom() {
       edited: true,
     } as any).eq('id', messageId);
   }, [encryptionKey, roomId]);
+
+  const handleDelete = useCallback(async (messageId: string) => {
+    setMessages(prev => prev.filter(m => m.id !== messageId));
+    const { error } = await supabase.from('messages').delete().eq('id', messageId);
+    if (error) {
+      toast.error('Failed to delete message');
+      console.error('Delete error:', error);
+    }
+  }, []);
+
+  const handleReact = useCallback(async (messageId: string, emoji: string) => {
+    if (!userId) return;
+    // Check if already reacted with this emoji - toggle
+    const msg = messages.find(m => m.id === messageId);
+    const existing = msg?.reactions.find(r => r.emoji === emoji && r.reacted);
+    
+    if (existing) {
+      // Remove reaction
+      setMessages(prev => prev.map(m => {
+        if (m.id !== messageId) return m;
+        return { ...m, reactions: m.reactions.map(r => r.emoji === emoji ? { ...r, count: r.count - 1, reacted: false } : r).filter(r => r.count > 0) };
+      }));
+      await (supabase as any).from('message_reactions').delete()
+        .eq('message_id', messageId)
+        .eq('user_id', userId)
+        .eq('emoji', emoji);
+    } else {
+      // Add reaction
+      setMessages(prev => prev.map(m => {
+        if (m.id !== messageId) return m;
+        const existingR = m.reactions.find(r => r.emoji === emoji);
+        if (existingR) {
+          return { ...m, reactions: m.reactions.map(r => r.emoji === emoji ? { ...r, count: r.count + 1, reacted: true } : r) };
+        }
+        return { ...m, reactions: [...m.reactions, { emoji, count: 1, reacted: true }] };
+      }));
+      await (supabase as any).from('message_reactions').insert({
+        message_id: messageId,
+        user_id: userId,
+        emoji,
+      });
+    }
+  }, [userId, messages]);
 
   const copyRoomId = () => {
     if (roomId) {
@@ -412,9 +525,12 @@ export default function ChatRoom() {
             messageType={msg.messageType}
             edited={msg.edited}
             replyTo={getReplyInfo(msg.replyToId)}
+            reactions={msg.reactions}
             onVisible={!msg.isOwn ? handleMessageVisible : undefined}
             onReply={handleReply}
             onEdit={handleEdit}
+            onDelete={handleDelete}
+            onReact={handleReact}
           />
         ))}
 
