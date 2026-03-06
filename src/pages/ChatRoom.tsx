@@ -63,6 +63,7 @@ export default function ChatRoom() {
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   const seenQueueRef = useRef<Set<string>>(new Set());
   const seenFlushRef = useRef<ReturnType<typeof setTimeout>>();
+  const inactivityTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
   const visibleMessages = messages.filter(msg => !hiddenMessageIds.has(msg.id));
 
@@ -88,12 +89,59 @@ export default function ChatRoom() {
     });
   }, [roomId, userId]);
 
-  // Privacy: blur on tab switch
+  // Privacy: blur on tab switch and force re-login when returning (especially on mobile)
   useEffect(() => {
-    const handleVisibility = () => setBlurred(document.hidden);
+    const handleVisibility = () => {
+      const isHidden = document.hidden;
+      setBlurred(isHidden);
+
+      // When user comes back to this tab (e.g. reopening mobile browser),
+      // immediately navigate to login so chat isn't visible.
+      if (!isHidden) {
+        const isMobile = window.innerWidth <= 768;
+        if (isMobile) {
+          navigate('/', { replace: true });
+        }
+      }
+    };
+
     document.addEventListener('visibilitychange', handleVisibility);
     return () => document.removeEventListener('visibilitychange', handleVisibility);
-  }, []);
+  }, [navigate]);
+
+  // Auto-logout after inactivity (5 minutes)
+  const resetInactivityTimer = useCallback(() => {
+    if (!joined) return;
+    if (inactivityTimerRef.current) {
+      clearTimeout(inactivityTimerRef.current);
+    }
+    inactivityTimerRef.current = setTimeout(() => {
+      navigate('/', { replace: true });
+    }, 5 * 60 * 1000);
+  }, [joined, navigate]);
+
+  useEffect(() => {
+    if (!joined) return;
+    const events: (keyof WindowEventMap)[] = [
+      'mousemove',
+      'mousedown',
+      'keydown',
+      'scroll',
+      'touchstart',
+    ];
+
+    const handleActivity = () => resetInactivityTimer();
+
+    resetInactivityTimer();
+    events.forEach(event => window.addEventListener(event, handleActivity));
+
+    return () => {
+      events.forEach(event => window.removeEventListener(event, handleActivity));
+      if (inactivityTimerRef.current) {
+        clearTimeout(inactivityTimerRef.current);
+      }
+    };
+  }, [joined, resetInactivityTimer]);
 
   // Helper to aggregate reactions
   const aggregateReactions = (reactionRows: { emoji: string; user_id: string }[], currentUserId: string): Reaction[] => {
@@ -152,19 +200,23 @@ export default function ChatRoom() {
       if (data) {
         const decrypted = await Promise.all(
           data.map(async (msg) => {
+            const deletedForEveryone = Boolean((msg as any).deleted_for_everyone);
             const isImage = msg.message_type === 'image';
-            const content = isImage
-              ? msg.encrypted_content
-              : await decryptMessage(msg.encrypted_content, encryptionKey);
+            const content = deletedForEveryone
+              ? ''
+              : (isImage
+                ? msg.encrypted_content
+                : await decryptMessage(msg.encrypted_content, encryptionKey));
             return {
               id: msg.id,
               content,
               isOwn: msg.sender_id === userId,
               timestamp: msg.created_at,
               seen: msg.sender_id === userId && seenByOther.has(msg.id),
-              messageType: msg.message_type,
+              messageType: deletedForEveryone ? 'text' : msg.message_type,
               replyToId: (msg as any).reply_to_id || null,
               edited: (msg as any).edited || false,
+              deletedForEveryone,
               reactions: aggregateReactions(reactionsMap.get(msg.id) || [], userId),
             };
           })
@@ -192,17 +244,21 @@ export default function ChatRoom() {
         async (payload) => {
           const msg = payload.new as any;
           if (msg.sender_id === userId) return;
+          const deletedForEveryone = Boolean(msg.deleted_for_everyone);
           const isImage = msg.message_type === 'image';
-          const content = isImage ? msg.encrypted_content : await decryptMessage(msg.encrypted_content, encryptionKey);
+          const content = deletedForEveryone
+            ? ''
+            : (isImage ? msg.encrypted_content : await decryptMessage(msg.encrypted_content, encryptionKey));
           setMessages(prev => [...prev, {
             id: msg.id,
             content,
             isOwn: false,
             timestamp: msg.created_at,
             seen: false,
-            messageType: msg.message_type,
+            messageType: deletedForEveryone ? 'text' : msg.message_type,
             replyToId: msg.reply_to_id || null,
             edited: msg.edited || false,
+            deletedForEveryone,
             reactions: [],
           }]);
         }
@@ -212,8 +268,11 @@ export default function ChatRoom() {
         { event: 'UPDATE', schema: 'public', table: 'messages', filter: `room_id=eq.${roomId}` },
         async (payload) => {
           const msg = payload.new as any;
+          const deletedForEveryone = Boolean(msg.deleted_for_everyone);
           const isImage = msg.message_type === 'image';
-          const content = isImage ? msg.encrypted_content : await decryptMessage(msg.encrypted_content, encryptionKey);
+          const content = deletedForEveryone
+            ? ''
+            : (isImage ? msg.encrypted_content : await decryptMessage(msg.encrypted_content, encryptionKey));
           setMessages(prev =>
             prev.map(m =>
               m.id === msg.id
@@ -222,6 +281,8 @@ export default function ChatRoom() {
                     content,
                     edited: msg.edited || false,
                     timestamp: msg.created_at || m.timestamp,
+                    deletedForEveryone,
+                    messageType: deletedForEveryone ? 'text' : (msg.message_type || m.messageType),
                   }
                 : m
             )
@@ -533,25 +594,36 @@ export default function ChatRoom() {
         return;
       }
 
+      let backup: Message | null = null;
       setMessages(prev =>
-        prev.map(m =>
-          m.id === messageId ? { ...m, deletedForEveryone: true } : m
-        )
+        prev.map(m => {
+          if (m.id !== messageId) return m;
+          backup = m;
+          return { ...m, content: '', messageType: 'text', deletedForEveryone: true };
+        })
       );
+
       supabase.channel(`presence-${roomId}`).send({
         type: 'broadcast',
         event: 'message_deleted',
         payload: { messageId },
       });
-      const { error } = await supabase.from('messages').delete().eq('id', messageId);
+
+      // Soft delete like WhatsApp: keep row, mark as deleted
+      const { error } = await supabase
+        .from('messages')
+        .update({
+          deleted_for_everyone: true,
+          deleted_at: new Date().toISOString(),
+        } as any)
+        .eq('id', messageId);
+
       if (error) {
         toast.error('Failed to delete message');
         console.error('Delete error:', error);
-        setMessages(prev =>
-          prev.map(m =>
-            m.id === messageId ? { ...m, deletedForEveryone: false } : m
-          )
-        );
+        if (backup) {
+          setMessages(prev => prev.map(m => (m.id === messageId ? backup! : m)));
+        }
       }
     },
     [roomId, userId]
@@ -629,12 +701,12 @@ export default function ChatRoom() {
   };
 
   return (
-    <div className={`h-screen flex flex-col bg-background transition-all duration-300 ${blurred ? 'blur-lg' : ''}`}>
+    <div className={`h-[100dvh] flex flex-col overflow-hidden bg-background transition-all duration-300 ${blurred ? 'blur-lg' : ''}`}>
       {/* Header */}
       <motion.header
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="glass-strong border-b border-border/30 px-4 py-3 flex items-center justify-between shrink-0 z-10"
+        className="glass-strong sticky top-0 z-30 border-b border-border/30 px-4 py-3 flex items-center justify-between shrink-0"
       >
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl overflow-hidden">
@@ -673,7 +745,7 @@ export default function ChatRoom() {
       </motion.header>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto py-4 space-y-2">
+      <div className="flex-1 overflow-y-auto overscroll-contain py-4 space-y-2">
         {visibleMessages.length === 0 && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }} className="flex flex-col items-center justify-center h-full text-center px-6">
             <div className="w-12 h-12 rounded-2xl overflow-hidden mb-4">
