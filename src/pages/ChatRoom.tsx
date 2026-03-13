@@ -64,6 +64,8 @@ export default function ChatRoom() {
   const seenQueueRef = useRef<Set<string>>(new Set());
   const seenFlushRef = useRef<ReturnType<typeof setTimeout>>();
   const inactivityTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const lastTapRef = useRef<number | null>(null);
+  const presenceChannelRef = useRef<{ untrack: () => void; track: (state: object) => Promise<void> } | null>(null);
 
   const visibleMessages = messages.filter(msg => !hiddenMessageIds.has(msg.id));
 
@@ -89,25 +91,37 @@ export default function ChatRoom() {
     });
   }, [roomId, userId]);
 
-  // Privacy: blur on tab switch and force re-login when returning (especially on mobile)
+  // Privacy: on mobile, when user leaves the browser (switches app), redirect to index immediately.
+  // Also: when tab is hidden (any device), untrack from presence so peer sees "offline" right away.
   useEffect(() => {
     const handleVisibility = () => {
       const isHidden = document.hidden;
-      setBlurred(isHidden);
+      const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
 
-      // When user comes back to this tab (e.g. reopening mobile browser),
-      // immediately navigate to login so chat isn't visible.
-      if (!isHidden) {
-        const isMobile = window.innerWidth <= 768;
-        if (isMobile) {
-          window.location.replace('/');
+      // When leaving: untrack presence immediately so peer sees "Waiting..." not "Online"
+      const presence = presenceChannelRef.current;
+      if (presence) {
+        if (isHidden) {
+          presence.untrack();
+        } else {
+          presence.track({ online: true });
         }
       }
+
+      if (isMobile) {
+        // Leave: redirect so app preview shows index, not chatroom
+        if (isHidden) {
+          window.location.replace('/');
+          return;
+        }
+      }
+
+      setBlurred(isHidden);
     };
 
     document.addEventListener('visibilitychange', handleVisibility);
     return () => document.removeEventListener('visibilitychange', handleVisibility);
-  }, [navigate]);
+  }, []);
 
   // Auto-logout after inactivity (5 minutes)
   const resetInactivityTimer = useCallback(() => {
@@ -376,6 +390,7 @@ export default function ChatRoom() {
     const presence = supabase.channel(`presence-${roomId}`, {
       config: { presence: { key: userId } },
     });
+    presenceChannelRef.current = presence;
     presence
       .on('presence', { event: 'sync' }, () => {
         const state = presence.presenceState();
@@ -401,7 +416,10 @@ export default function ChatRoom() {
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED') await presence.track({ online: true });
       });
-    return () => { supabase.removeChannel(presence); };
+    return () => {
+      presenceChannelRef.current = null;
+      supabase.removeChannel(presence);
+    };
   }, [roomId, userId, joined]);
 
   // Auto-scroll
@@ -700,13 +718,27 @@ export default function ChatRoom() {
     return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
   };
 
+  const handleDoubleTap = (event: React.TouchEvent<HTMLDivElement>) => {
+    const now = Date.now();
+    const last = lastTapRef.current;
+    lastTapRef.current = now;
+    if (last && now - last < 350) {
+      event.preventDefault();
+      window.location.replace('/');
+    }
+  };
+
   return (
-    <div className={`h-[100dvh] flex flex-col overflow-hidden bg-background transition-all duration-300 ${blurred ? 'blur-lg' : ''}`}>
+    <div
+      className={`h-[100dvh] flex flex-col overflow-hidden bg-background transition-all duration-300 ${blurred ? 'blur-lg' : ''}`}
+      onDoubleClick={() => window.location.replace('/')}
+      onTouchStart={handleDoubleTap}
+    >
       {/* Header */}
       <motion.header
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="glass-strong sticky top-0 z-30 border-b border-border/30 px-4 py-3 flex items-center justify-between shrink-0"
+        className="glass-strong fixed inset-x-0 top-0 z-30 border-b border-border/30 px-4 py-3 flex items-center justify-between shrink-0 sm:relative sm:inset-auto"
       >
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl overflow-hidden">
@@ -745,7 +777,7 @@ export default function ChatRoom() {
       </motion.header>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto overscroll-contain py-4 space-y-2">
+      <div className="flex-1 overflow-y-auto overscroll-contain pt-16 pb-4 space-y-2 sm:pt-4">
         {visibleMessages.length === 0 && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }} className="flex flex-col items-center justify-center h-full text-center px-6">
             <div className="w-12 h-12 rounded-2xl overflow-hidden mb-4">

@@ -6,6 +6,7 @@ import vsLogo from '@/assets/vs-logo.png';
 import { hashPassword } from '@/lib/crypto';
 import { useUser } from '@/hooks/useUser';
 import LoginForm from '@/components/LoginForm';
+import { ALL_PRODUCTS, type Product } from '@/lib/products';
 
 const SECRET_CODE = 'vs2614';
 const HERO_BG_URL =
@@ -32,173 +33,6 @@ const LOWER_NAV_ITEMS = [
   'Tools & Home Improvement',
 ] as const;
 
-interface Product {
-  id: number;
-  name: string;
-  category: string;
-  price: string;
-  badge?: string;
-  image: string;
-}
-
-const ALL_PRODUCTS: Product[] = [
-  {
-    id: 1,
-    name: 'Men Solid Cotton T‑Shirt',
-    category: 'Men',
-    price: '₹799',
-    badge: 'BESTSELLER',
-    image: 'https://images.pexels.com/photos/3755706/pexels-photo-3755706.jpeg?auto=compress&cs=tinysrgb&w=800',
-  },
-  {
-    id: 2,
-    name: 'Women Floral A‑Line Dress',
-    category: 'Women',
-    price: '₹1,499',
-    badge: 'NEW',
-    image: 'https://images.pexels.com/photos/7940621/pexels-photo-7940621.jpeg?auto=compress&cs=tinysrgb&w=800',
-  },
-  {
-    id: 3,
-    name: 'Kids Printed Hoodie',
-    category: 'Kids',
-    price: '₹1,199',
-    image: 'https://images.pexels.com/photos/3763584/pexels-photo-3763584.jpeg?auto=compress&cs=tinysrgb&w=800',
-  },
-  {
-    id: 4,
-    name: 'Running Shoes',
-    category: 'Sports',
-    price: '₹2,999',
-    badge: 'TRENDING',
-    image: 'https://images.pexels.com/photos/19090/pexels-photo.jpg?auto=compress&cs=tinysrgb&w=800',
-  },
-  {
-    id: 5,
-    name: 'Casual Checked Shirt',
-    category: 'Men',
-    price: '₹1,299',
-    image: 'https://images.pexels.com/photos/7671166/pexels-photo-7671166.jpeg?auto=compress&cs=tinysrgb&w=800',
-  },
-  {
-    id: 6,
-    name: 'Ethnic Anarkali Kurta',
-    category: 'Women',
-    price: '₹1,999',
-    image: 'https://images.pexels.com/photos/6311572/pexels-photo-6311572.jpeg?auto=compress&cs=tinysrgb&w=800',
-  },
-  {
-    id: 7,
-    name: 'Wireless Over‑Ear Headphones',
-    category: 'Electronics',
-    price: '₹3,499',
-    badge: 'HOT',
-    image: 'https://images.pexels.com/photos/373945/pexels-photo-373945.jpeg?auto=compress&cs=tinysrgb&w=800',
-  },
-  {
-    id: 8,
-    name: 'Minimalist Analog Wrist Watch',
-    category: 'Accessories',
-    price: '₹1,799',
-    image: 'https://images.pexels.com/photos/190819/pexels-photo-190819.jpeg?auto=compress&cs=tinysrgb&w=800',
-  },
-  {
-    id: 9,
-    name: 'Leather Crossbody Bag',
-    category: 'Women',
-    price: '₹2,299',
-    image: 'https://images.pexels.com/photos/939660/pexels-photo-939660.jpeg?auto=compress&cs=tinysrgb&w=800',
-  },
-  {
-    id: 10,
-    name: 'Classic Denim Jacket',
-    category: 'Men',
-    price: '₹2,199',
-    image: 'https://images.pexels.com/photos/3758930/pexels-photo-3758930.jpeg?auto=compress&cs=tinysrgb&w=800',
-  },
-  {
-    id: 17,
-    name: 'Men Slim Fit Jeans',
-    category: 'Men',
-    price: '₹1,799',
-    badge: 'TRENDING',
-    image: 'https://images.pexels.com/photos/1342609/pexels-photo-1342609.jpeg?auto=compress&cs=tinysrgb&w=800',
-  },
-  {
-    id: 18,
-    name: 'Men Formal Blazer',
-    category: 'Men',
-    price: '₹3,999',
-    badge: 'POPULAR',
-    image: 'https://images.pexels.com/photos/450212/pexels-photo-450212.jpeg?auto=compress&cs=tinysrgb&w=800',
-  },
-  {
-    id: 19,
-    name: 'Men Chino Pants',
-    category: 'Men',
-    price: '₹1,599',
-    image: 'https://images.pexels.com/photos/6764034/pexels-photo-6764034.jpeg?auto=compress&cs=tinysrgb&w=800',
-  },
-  {
-    id: 20,
-    name: 'Men Classic Polo T‑Shirt',
-    category: 'Men',
-    price: '₹999',
-    image: 'https://images.pexels.com/photos/9558783/pexels-photo-9558783.jpeg?auto=compress&cs=tinysrgb&w=800',
-  },
-  {
-    id: 21,
-    name: 'Men Lightweight Bomber Jacket',
-    category: 'Men',
-    price: '₹2,899',
-    badge: 'NEW',
-    image: 'https://images.pexels.com/photos/1040945/pexels-photo-1040945.jpeg?auto=compress&cs=tinysrgb&w=800',
-  },
-  {
-    id: 11,
-    name: 'Cotton Bedsheet Set',
-    category: 'Home',
-    price: '₹1,299',
-    image: 'https://images.pexels.com/photos/164595/pexels-photo-164595.jpeg?auto=compress&cs=tinysrgb&w=800',
-  },
-  {
-    id: 12,
-    name: 'Sports Smartwatch',
-    category: 'Electronics',
-    price: '₹4,999',
-    image: 'https://images.pexels.com/photos/267394/pexels-photo-267394.jpeg?auto=compress&cs=tinysrgb&w=800',
-  },
-  {
-    id: 13,
-    name: 'Women Solid Fit & Flare Dress',
-    category: 'Women',
-    price: '₹1,899',
-    badge: 'POPULAR',
-    image: 'https://images.pexels.com/photos/6311579/pexels-photo-6311579.jpeg?auto=compress&cs=tinysrgb&w=800',
-  },
-  {
-    id: 14,
-    name: 'Women Polka Dot Midi Dress',
-    category: 'Women',
-    price: '₹1,699',
-    image: 'https://images.pexels.com/photos/6311575/pexels-photo-6311575.jpeg?auto=compress&cs=tinysrgb&w=800',
-  },
-  {
-    id: 15,
-    name: 'Women Casual Summer Dress',
-    category: 'Women',
-    price: '₹1,299',
-    image: 'https://images.pexels.com/photos/6311587/pexels-photo-6311587.jpeg?auto=compress&cs=tinysrgb&w=800',
-  },
-  {
-    id: 16,
-    name: 'Women Belted Shirt Dress',
-    category: 'Women',
-    price: '₹2,099',
-    image: 'https://images.pexels.com/photos/6311622/pexels-photo-6311622.jpeg?auto=compress&cs=tinysrgb&w=800',
-  },
-];
-
 export default function Index() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -211,8 +45,20 @@ export default function Index() {
   const [navPanel, setNavPanel] = useState<'account' | 'orders' | 'cart' | null>(null);
   const [showAllMenu, setShowAllMenu] = useState(false);
   const [activeLowerNav, setActiveLowerNav] = useState<string | null>(null);
+  const [blurred, setBlurred] = useState(false);
   const navigate = useNavigate();
   const { user, loading: userLoading, login, logout } = useUser();
+
+  // On mobile: blur index when app is in background (recent-apps preview shows blurred Shopzone)
+  useEffect(() => {
+    const handleVisibility = () => {
+      const isHidden = document.hidden;
+      const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
+      if (isMobile) setBlurred(isHidden);
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, []);
 
   const mensProducts = useMemo(
     () => ALL_PRODUCTS.filter(p => p.category.toLowerCase() === 'men'),
@@ -314,6 +160,10 @@ export default function Index() {
     activeSearchTerm && !showSecretLogin ? filteredProducts : [];
   const hasActiveSearch = activeSearchTerm.length > 0 && !showSecretLogin;
 
+  const goToProduct = (product: Product) => {
+    navigate(`/product/${product.id}`);
+  };
+
   const handleJoin = async () => {
     if (!password.trim() || !user) return;
     setLoading(true);
@@ -354,17 +204,17 @@ export default function Index() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f3f3f3] text-foreground">
+    <div className={`min-h-screen bg-[#f3f3f3] text-foreground transition-all duration-300 ${blurred ? 'blur-lg' : ''}`}>
       {/* Amazon-inspired top navbar */}
       <header className="sticky top-0 z-40">
         {/* Main dark bar */}
         <div className="bg-[#131921] text-white">
-          <div className="max-w-6xl mx-auto flex items-center gap-4 px-4 py-2">
+          <div className="w-full mx-auto flex items-center gap-3 px-4 py-2">
         {/* Logo */}
             <button
               type="button"
               onClick={() => window.location.replace('/')}
-              className="flex items-center gap-3 focus:outline-none"
+              className="flex items-center gap-2 focus:outline-none flex-shrink-0"
               aria-label="Go to Shopzone home"
             >
               <div className="text-2xl font-bold tracking-tight leading-none">
@@ -375,12 +225,12 @@ export default function Index() {
             {/* Search */}
             <form
               onSubmit={handleSearchSubmit}
-              className="hidden md:flex flex-1 items-stretch mx-2"
+              className="flex flex-1 min-w-0 items-stretch mx-2"
             >
               <select
                 value={searchCategory}
                 onChange={e => setSearchCategory(e.target.value)}
-                className="text-xs px-2 bg-gray-100 text-black rounded-l-md border-r border-gray-300"
+                className="text-xs px-1 bg-gray-100 text-black rounded-l-md border-r border-gray-300 flex-shrink-0 w-[72px] sm:w-[96px]"
               >
                 <option value="All">All</option>
                 <option value="Men">Clothes (Men)</option>
@@ -394,10 +244,10 @@ export default function Index() {
               <input
                 value={search}
                 onChange={e => setSearch(e.target.value)}
-                className="flex-1 px-3 py-1 text-sm text-black outline-none"
+                className="flex-1 min-w-0 px-3 py-1 text-sm text-black outline-none"
                 placeholder="Search Shopzone.in"
               />
-              <button className="px-3 bg-[#febd69] text-black rounded-r-md text-sm font-semibold">
+              <button className="px-3 bg-[#febd69] text-black rounded-r-md text-sm font-semibold flex-shrink-0">
                 Go
               </button>
             </form>
@@ -438,7 +288,7 @@ export default function Index() {
 
         {/* Second nav row */}
         <div className="bg-[#232f3e] text-white text-xs">
-          <div className="max-w-6xl mx-auto flex items-center gap-4 px-4 py-2 overflow-x-auto">
+          <div className="w-full mx-auto flex items-center gap-4 px-4 py-2 overflow-x-auto">
             <button
               type="button"
               onClick={() => setShowAllMenu(true)}
@@ -459,24 +309,6 @@ export default function Index() {
               </button>
             ))}
           </div>
-        </div>
-
-        {/* Mobile search bar */}
-        <div className="bg-[#131921] sm:hidden border-t border-black/40 px-4 pb-3 pt-2">
-          <form
-            onSubmit={handleSearchSubmit}
-            className="flex items-center bg-white rounded-md overflow-hidden"
-          >
-            <input
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="flex-1 px-3 py-1 text-sm text-black outline-none"
-              placeholder="Search Shopzone.in"
-            />
-            <button className="px-3 bg-[#febd69] text-black text-xs font-semibold">
-              Go
-            </button>
-          </form>
         </div>
 
         {/* Simple dropdown panel for Account / Orders / Cart */}
@@ -560,7 +392,7 @@ export default function Index() {
         )}
       </AnimatePresence>
 
-      <main className="max-w-6xl mx-auto px-4 pb-16 pt-4">
+      <main className="w-full mx-auto px-4 pb-16 pt-4">
         {showSecretLogin ? (
           <section className="mt-6 space-y-4">
             <button
@@ -681,7 +513,7 @@ export default function Index() {
               }}
             >
               <div
-                className="max-w-6xl mx-auto px-4 py-10 md:py-16 bg-[#0f2438]/90"
+                className="w-full mx-auto px-4 py-10 md:py-16 bg-[#0f2438]/90"
                 onMouseEnter={() => setHeroPaused(true)}
                 onMouseLeave={() => setHeroPaused(false)}
                 onFocusCapture={() => setHeroPaused(true)}
@@ -808,12 +640,17 @@ export default function Index() {
                   <h3 className="text-sm font-semibold text-black">Pick up where you left off</h3>
                   <div className="grid grid-cols-2 gap-3 text-sm text-black">
                     {filteredProducts.slice(0, 4).map(p => (
-                      <div key={p.id} className="space-y-1">
-                      <div className="h-28 md:h-32 bg-muted rounded-sm overflow-hidden">
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => goToProduct(p)}
+                        className="space-y-1 text-left"
+                      >
+                        <div className="h-28 md:h-32 bg-muted rounded-sm overflow-hidden">
                           <img src={p.image} alt={p.name} className="w-full h-full object-cover" />
                         </div>
                         <p className="line-clamp-2">{p.name}</p>
-                      </div>
+                      </button>
                     ))}
                   </div>
                   <button className="mt-1 text-xs text-sky-700 hover:underline self-start">
@@ -825,13 +662,18 @@ export default function Index() {
                   <h3 className="text-sm font-semibold text-black">Continue shopping deals</h3>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm text-black">
                     {ALL_PRODUCTS.slice(1, 7).map(p => (
-                      <div key={p.id} className="space-y-1">
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => goToProduct(p)}
+                        className="space-y-1 text-left"
+                      >
                         <div className="h-28 md:h-32 bg-muted rounded-sm overflow-hidden">
                           <img src={p.image} alt={p.name} className="w-full h-full object-cover" />
                         </div>
                         <p className="line-clamp-2">{p.name}</p>
                         <p className="font-semibold">{p.price}</p>
-                      </div>
+                      </button>
                     ))}
                   </div>
                   <button className="mt-1 text-xs text-sky-700 hover:underline self-start">
@@ -843,12 +685,17 @@ export default function Index() {
                   <h3 className="text-sm font-semibold text-black">Deals related to items you&apos;ve saved</h3>
                   <div className="flex flex-wrap gap-3 text-sm text-black">
                     {filteredProducts.slice(2, 5).map(p => (
-                      <div key={p.id} className="w-24 space-y-1">
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => goToProduct(p)}
+                        className="w-24 space-y-1 text-left"
+                      >
                         <div className="h-24 bg-muted rounded-sm overflow-hidden">
                           <img src={p.image} alt={p.name} className="w-full h-full object-cover" />
                         </div>
                         <p className="line-clamp-2">{p.name}</p>
-                      </div>
+                      </button>
                     ))}
                   </div>
                   <button className="mt-1 text-xs text-sky-700 hover:underline self-start">
@@ -1017,12 +864,17 @@ export default function Index() {
                   <h3 className="text-sm font-semibold text-black">Men&apos;s wear top picks</h3>
                   <div className="grid grid-cols-2 gap-3 text-[11px] text-muted-foreground">
                     {mensProducts.slice(0, 4).map(p => (
-                      <div key={p.id}>
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => goToProduct(p)}
+                        className="text-left"
+                      >
                         <div className="h-28 md:h-32 rounded-sm mb-1 overflow-hidden bg-muted">
                           <img src={p.image} alt={p.name} className="w-full h-full object-cover" />
                         </div>
                         <p className="text-black line-clamp-2">{p.name}</p>
-                      </div>
+                      </button>
                     ))}
                   </div>
                   <button className="mt-1 text-xs text-sky-700 hover:underline self-start">
@@ -1050,12 +902,17 @@ export default function Index() {
                   <h3 className="text-sm font-semibold text-black">Jeans, chinos &amp; trousers</h3>
                   <div className="grid grid-cols-2 gap-3 text-[11px] text-muted-foreground">
                     {mensProducts.filter(p => /jeans|chino|pants/i.test(p.name)).slice(0, 4).map(p => (
-                      <div key={p.id}>
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => goToProduct(p)}
+                        className="text-left"
+                      >
                         <div className="h-28 md:h-32 rounded-sm mb-1 overflow-hidden bg-muted">
                           <img src={p.image} alt={p.name} className="w-full h-full object-cover" />
                         </div>
                         <p className="text-black line-clamp-2">{p.name}</p>
-                      </div>
+                      </button>
                     ))}
                   </div>
                   <button className="mt-1 text-xs text-sky-700 hover:underline self-start">
@@ -1067,12 +924,17 @@ export default function Index() {
                   <h3 className="text-sm font-semibold text-black">Trending jackets &amp; blazers</h3>
                   <div className="grid grid-cols-2 gap-3 text-[11px] text-muted-foreground">
                     {mensProducts.filter(p => /jacket|blazer/i.test(p.name)).slice(0, 4).map(p => (
-                      <div key={p.id}>
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => goToProduct(p)}
+                        className="text-left"
+                      >
                         <div className="h-28 md:h-32 rounded-sm mb-1 overflow-hidden bg-muted">
                           <img src={p.image} alt={p.name} className="w-full h-full object-cover" />
                         </div>
                         <p className="text-black line-clamp-2">{p.name}</p>
-                      </div>
+                      </button>
                     ))}
                   </div>
                   <button className="mt-1 text-xs text-sky-700 hover:underline self-start">
@@ -1093,16 +955,18 @@ export default function Index() {
                 </div>
                 <div className="flex gap-4 overflow-x-auto pb-2">
                   {mensProducts.slice(0, 12).map(p => (
-                    <div
+                    <button
                       key={p.id}
-                      className="w-40 flex-shrink-0 space-y-1 text-[11px] text-black"
+                      type="button"
+                      onClick={() => goToProduct(p)}
+                      className="w-40 flex-shrink-0 space-y-1 text-[11px] text-black text-left"
                     >
                       <div className="h-40 w-40 bg-muted rounded-sm overflow-hidden">
                         <img src={p.image} alt={p.name} className="w-full h-full object-cover" />
                       </div>
                       <p className="line-clamp-2">{p.name}</p>
                       <p className="font-semibold">{p.price}</p>
-                    </div>
+                    </button>
                   ))}
                 </div>
               </section>
@@ -1281,9 +1145,11 @@ export default function Index() {
                 {searchResults.length > 0 ? (
                   <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                     {searchResults.map(product => (
-                      <article
+                      <button
                         key={product.id}
-                        className="bg-white border border-border/60 rounded-md shadow-sm p-3 flex flex-col gap-1 text-sm text-black"
+                        type="button"
+                        onClick={() => goToProduct(product)}
+                        className="bg-white border border-border/60 rounded-md shadow-sm p-3 flex flex-col gap-1 text-sm text-black text-left"
                       >
                         <div className="h-44 md:h-48 bg-muted rounded-sm overflow-hidden flex items-center justify-center">
                           <img
@@ -1294,7 +1160,7 @@ export default function Index() {
                         </div>
                         <p className="mt-1 line-clamp-2 font-medium">{product.name}</p>
                         <p className="text-sm font-semibold">{product.price}</p>
-                      </article>
+                      </button>
                     ))}
                   </div>
                 ) : (
@@ -1310,7 +1176,7 @@ export default function Index() {
 
             {/* Full-width recommendation strip */}
             <section className="mt-8 bg-white border-t border-border/40">
-              <div className="max-w-6xl mx-auto px-4 py-4">
+              <div className="w-full mx-auto px-4 py-4">
                 <div className="flex items-baseline justify-between mb-2">
                   <h2 className="text-sm font-semibold text-black">
                     Customers who viewed items in your browsing history also viewed
@@ -1319,9 +1185,11 @@ export default function Index() {
                 </div>
                 <div className="flex gap-4 overflow-x-auto pb-3">
                   {ALL_PRODUCTS.slice(0, 8).map((p, idx) => (
-                    <article
+                    <button
                       key={p.id}
-                      className="min-w-[190px] bg-white rounded-md border border-border/50 p-3 flex flex-col gap-1 text-[11px]"
+                      type="button"
+                      onClick={() => goToProduct(p)}
+                      className="min-w-[190px] bg-white rounded-md border border-border/50 p-3 flex flex-col gap-1 text-[11px] text-left"
                     >
                       <div className="h-52 bg-muted rounded-sm overflow-hidden flex items-center justify-center">
                         <img
@@ -1338,7 +1206,44 @@ export default function Index() {
                       <p className="text-[10px] text-muted-foreground">
                         FREE Delivery by Shopzone
                       </p>
-                    </article>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </section>
+
+            {/* All products grid */}
+            <section className="mt-6">
+              <div className="bg-white border border-border/60 rounded-md shadow-sm p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="text-sm font-semibold text-black">
+                    Explore all Shopzone products
+                  </h2>
+                  <span className="text-[11px] text-muted-foreground">
+                    {ALL_PRODUCTS.length} items
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                  {ALL_PRODUCTS.map(p => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => goToProduct(p)}
+                      className="bg-white border border-border/50 rounded-md p-3 flex flex-col gap-1 text-left text-xs hover:shadow-sm transition-shadow"
+                    >
+                      <div className="h-36 sm:h-40 bg-muted rounded-sm overflow-hidden flex items-center justify-center">
+                        <img
+                          src={p.image}
+                          alt={p.name}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      <p className="mt-1 line-clamp-2 text-black">{p.name}</p>
+                      <p className="text-[10px] text-amber-600 font-semibold">
+                        ★★★★☆ <span className="text-muted-foreground">({(p.id + 1) * 61})</span>
+                      </p>
+                      <p className="text-sm font-semibold text-black">{p.price}</p>
+                    </button>
                   ))}
                 </div>
               </div>
