@@ -66,6 +66,7 @@ export default function ChatRoom() {
   const inactivityTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const lastTapRef = useRef<number | null>(null);
   const presenceChannelRef = useRef<{ untrack: () => void; track: (state: object) => Promise<void> } | null>(null);
+  const privacyOverlayRef = useRef<HTMLDivElement | null>(null);
 
   const visibleMessages = messages.filter(msg => !hiddenMessageIds.has(msg.id));
 
@@ -91,14 +92,47 @@ export default function ChatRoom() {
     });
   }, [roomId, userId]);
 
-  // Privacy: on mobile, when user leaves the browser (switches app), redirect to index immediately.
-  // Also: when tab is hidden (any device), untrack from presence so peer sees "offline" right away.
+  // Privacy (mobile + desktop): when tab/window is hidden, overlay + blur so taskbar/Alt+Tab/recent-apps never show chat.
+  // On mobile we also redirect to index when user leaves the browser.
   useEffect(() => {
+    const PRIVACY_OVERLAY_ID = 'chat-privacy-overlay';
+
+    const removeOverlay = () => {
+      const el = privacyOverlayRef.current || document.getElementById(PRIVACY_OVERLAY_ID);
+      if (el?.parentNode) {
+        el.parentNode.removeChild(el);
+        privacyOverlayRef.current = null;
+      }
+    };
+
+    const addOverlay = () => {
+      if (privacyOverlayRef.current || document.getElementById(PRIVACY_OVERLAY_ID)) return;
+      const overlay = document.createElement('div');
+      overlay.id = PRIVACY_OVERLAY_ID;
+      overlay.setAttribute('aria-hidden', 'true');
+      Object.assign(overlay.style, {
+        position: 'fixed',
+        inset: '0',
+        zIndex: '99999',
+        backgroundColor: '#f3f3f3',
+        backgroundImage: 'radial-gradient(circle at 50% 50%, #e5e5e5 0%, #f3f3f3 100%)',
+      });
+      document.body.appendChild(overlay);
+      privacyOverlayRef.current = overlay;
+    };
+
     const handleVisibility = () => {
       const isHidden = document.hidden;
       const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
 
-      // When leaving: untrack presence immediately so peer sees "Waiting..." not "Online"
+      if (isHidden) {
+        // Cover chat immediately so recent-apps preview never shows messages (same-tick)
+        addOverlay();
+      } else {
+        removeOverlay();
+      }
+
+      // When leaving: untrack presence so peer sees "Waiting..." not "Online"
       const presence = presenceChannelRef.current;
       if (presence) {
         if (isHidden) {
@@ -108,19 +142,20 @@ export default function ChatRoom() {
         }
       }
 
-      if (isMobile) {
-        // Leave: redirect so app preview shows index, not chatroom
-        if (isHidden) {
-          window.location.replace('/');
-          return;
-        }
+      if (isMobile && isHidden) {
+        // Redirect so when user returns they land on index; overlay already hid the chat for snapshot
+        window.location.replace('/');
+        return;
       }
 
       setBlurred(isHidden);
     };
 
     document.addEventListener('visibilitychange', handleVisibility);
-    return () => document.removeEventListener('visibilitychange', handleVisibility);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+      removeOverlay();
+    };
   }, []);
 
   // Auto-logout after inactivity (5 minutes)
@@ -730,7 +765,7 @@ export default function ChatRoom() {
 
   return (
     <div
-      className={`h-[100dvh] flex flex-col overflow-hidden bg-background transition-all duration-300 ${blurred ? 'blur-lg' : ''}`}
+      className={`fixed inset-0 flex flex-col bg-background transition-all duration-300 ${blurred ? 'blur-lg' : ''}`}
       onDoubleClick={() => window.location.replace('/')}
       onTouchStart={handleDoubleTap}
     >

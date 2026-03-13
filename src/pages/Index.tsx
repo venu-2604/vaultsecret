@@ -49,12 +49,10 @@ export default function Index() {
   const navigate = useNavigate();
   const { user, loading: userLoading, login, logout } = useUser();
 
-  // On mobile: blur index when app is in background (recent-apps preview shows blurred Shopzone)
+  // Privacy: blur when tab/window is in background (mobile and desktop) so previews don’t show content
   useEffect(() => {
     const handleVisibility = () => {
-      const isHidden = document.hidden;
-      const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
-      if (isMobile) setBlurred(isHidden);
+      setBlurred(document.hidden);
     };
     document.addEventListener('visibilitychange', handleVisibility);
     return () => document.removeEventListener('visibilitychange', handleVisibility);
