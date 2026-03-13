@@ -124,7 +124,7 @@ export default function MessageContextMenu({
               transition={{ duration: 0.15, ease: 'easeOut' }}
               className={`z-50 ${
                 isMobile
-                  ? 'fixed left-4 right-4 bottom-4'
+                  ? 'absolute left-0 right-0 bottom-full mb-2'
                   : `absolute ${isOwn ? 'right-0' : 'left-0'} bottom-full mb-2`
               }`}
             >

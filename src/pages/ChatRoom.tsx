@@ -70,7 +70,7 @@ export default function ChatRoom() {
   // Redirect if missing data
   useEffect(() => {
     if (!password || !roomId || !userId) {
-      navigate('/', { replace: true });
+      window.location.replace('/');
     }
   }, [password, roomId, userId, navigate]);
 
@@ -100,7 +100,7 @@ export default function ChatRoom() {
       if (!isHidden) {
         const isMobile = window.innerWidth <= 768;
         if (isMobile) {
-          navigate('/', { replace: true });
+          window.location.replace('/');
         }
       }
     };
@@ -116,7 +116,7 @@ export default function ChatRoom() {
       clearTimeout(inactivityTimerRef.current);
     }
     inactivityTimerRef.current = setTimeout(() => {
-      navigate('/', { replace: true });
+      window.location.replace('/');
     }, 5 * 60 * 1000);
   }, [joined, navigate]);
 
@@ -678,7 +678,7 @@ export default function ChatRoom() {
       <div className="h-screen flex items-center justify-center bg-background">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center px-6">
           <p className="text-destructive font-semibold mb-2">{roomError}</p>
-          <button onClick={() => navigate('/')} className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+          <button onClick={() => window.location.replace('/')} className="text-sm text-muted-foreground hover:text-foreground transition-colors">
             ← Back to Home
           </button>
         </motion.div>
@@ -738,7 +738,7 @@ export default function ChatRoom() {
               </>
             )}
           </div>
-          <button onClick={() => navigate('/')} className="p-2 rounded-xl hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-all">
+          <button onClick={() => window.location.replace('/')} className="p-2 rounded-xl hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-all">
             <LogOut className="w-4 h-4" />
           </button>
         </div>
