@@ -630,6 +630,43 @@ export default function Index() {
               </div>
             </section>
 
+            {/* All products grid */}
+            <section className="mt-6">
+              <div className="bg-white border border-border/60 rounded-md shadow-sm p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="text-sm font-semibold text-black">
+                    Explore all Shopzone products
+                  </h2>
+                  <span className="text-[11px] text-muted-foreground">
+                    {ALL_PRODUCTS.length} items
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                  {ALL_PRODUCTS.map(p => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => goToProduct(p)}
+                      className="bg-white border border-border/50 rounded-md p-3 flex flex-col gap-1 text-left text-xs hover:shadow-sm transition-shadow"
+                    >
+                      <div className="h-36 sm:h-40 bg-muted rounded-sm overflow-hidden flex items-center justify-center">
+                        <img
+                          src={p.image}
+                          alt={p.name}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      <p className="mt-1 line-clamp-2 text-black">{p.name}</p>
+                      <p className="text-[10px] text-amber-600 font-semibold">
+                        ★★★★☆ <span className="text-muted-foreground">({(p.id + 1) * 61})</span>
+                      </p>
+                      <p className="text-sm font-semibold text-black">{p.price}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </section>
+
             {/* Card grid under hero (Amazon-style rows) */}
             <section className="mt-6 space-y-4">
               {/* First row */}
@@ -1204,43 +1241,6 @@ export default function Index() {
                       <p className="text-[10px] text-muted-foreground">
                         FREE Delivery by Shopzone
                       </p>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </section>
-
-            {/* All products grid */}
-            <section className="mt-6">
-              <div className="bg-white border border-border/60 rounded-md shadow-sm p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-sm font-semibold text-black">
-                    Explore all Shopzone products
-                  </h2>
-                  <span className="text-[11px] text-muted-foreground">
-                    {ALL_PRODUCTS.length} items
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-                  {ALL_PRODUCTS.map(p => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => goToProduct(p)}
-                      className="bg-white border border-border/50 rounded-md p-3 flex flex-col gap-1 text-left text-xs hover:shadow-sm transition-shadow"
-                    >
-                      <div className="h-36 sm:h-40 bg-muted rounded-sm overflow-hidden flex items-center justify-center">
-                        <img
-                          src={p.image}
-                          alt={p.name}
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                      <p className="mt-1 line-clamp-2 text-black">{p.name}</p>
-                      <p className="text-[10px] text-amber-600 font-semibold">
-                        ★★★★☆ <span className="text-muted-foreground">({(p.id + 1) * 61})</span>
-                      </p>
-                      <p className="text-sm font-semibold text-black">{p.price}</p>
                     </button>
                   ))}
                 </div>

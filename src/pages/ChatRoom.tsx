@@ -64,7 +64,6 @@ export default function ChatRoom() {
   const seenQueueRef = useRef<Set<string>>(new Set());
   const seenFlushRef = useRef<ReturnType<typeof setTimeout>>();
   const inactivityTimerRef = useRef<ReturnType<typeof setTimeout>>();
-  const lastTapRef = useRef<number | null>(null);
   const presenceChannelRef = useRef<{ untrack: () => void; track: (state: object) => Promise<void> } | null>(null);
   const privacyOverlayRef = useRef<HTMLDivElement | null>(null);
 
@@ -753,21 +752,9 @@ export default function ChatRoom() {
     return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
   };
 
-  const handleDoubleTap = (event: React.TouchEvent<HTMLDivElement>) => {
-    const now = Date.now();
-    const last = lastTapRef.current;
-    lastTapRef.current = now;
-    if (last && now - last < 350) {
-      event.preventDefault();
-      window.location.replace('/');
-    }
-  };
-
   return (
     <div
       className={`fixed inset-0 flex flex-col bg-background transition-all duration-300 ${blurred ? 'blur-lg' : ''}`}
-      onDoubleClick={() => window.location.replace('/')}
-      onTouchStart={handleDoubleTap}
     >
       {/* Header */}
       <motion.header
