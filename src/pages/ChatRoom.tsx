@@ -54,6 +54,7 @@ export default function ChatRoom() {
   const [peerOnline, setPeerOnline] = useState(false);
   const [copied, setCopied] = useState(false);
   const [blurred, setBlurred] = useState(false);
+  const [headerTop, setHeaderTop] = useState(0);
   const [roomError, setRoomError] = useState('');
   const [joined, setJoined] = useState(false);
   const [replyTo, setReplyTo] = useState<ReplyInfo | null>(null);
@@ -68,6 +69,40 @@ export default function ChatRoom() {
   const privacyOverlayRef = useRef<HTMLDivElement | null>(null);
 
   const visibleMessages = messages.filter(msg => !hiddenMessageIds.has(msg.id));
+
+  // Lock document scroll so the header stays fixed when the virtual keyboard opens (mobile)
+  useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+    const prevHtmlOverflow = html.style.overflow;
+    const prevBodyOverflow = body.style.overflow;
+    const prevBodyHeight = body.style.minHeight;
+    html.style.overflow = 'hidden';
+    body.style.overflow = 'hidden';
+    body.style.minHeight = '100dvh';
+    return () => {
+      html.style.overflow = prevHtmlOverflow;
+      body.style.overflow = prevBodyOverflow;
+      body.style.minHeight = prevBodyHeight;
+    };
+  }, []);
+
+  // Keep header at top of visual viewport when keyboard opens (mobile)
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const update = () => {
+      const isMobile = window.innerWidth <= 768;
+      setHeaderTop(isMobile ? vv.offsetTop : 0);
+    };
+    update();
+    vv.addEventListener('resize', update);
+    vv.addEventListener('scroll', update);
+    return () => {
+      vv.removeEventListener('resize', update);
+      vv.removeEventListener('scroll', update);
+    };
+  }, []);
 
   // Redirect if missing data
   useEffect(() => {
@@ -754,13 +789,14 @@ export default function ChatRoom() {
 
   return (
     <div
-      className={`fixed inset-0 flex flex-col bg-background transition-all duration-300 ${blurred ? 'blur-lg' : ''}`}
+      className={`fixed inset-0 h-[100dvh] max-h-[100dvh] flex flex-col overflow-hidden bg-background transition-all duration-300 ${blurred ? 'blur-lg' : ''}`}
     >
       {/* Header */}
       <motion.header
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         className="glass-strong fixed inset-x-0 top-0 z-30 border-b border-border/30 px-4 py-3 flex items-center justify-between shrink-0 sm:relative sm:inset-auto"
+        style={headerTop > 0 ? { top: headerTop } : undefined}
       >
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl overflow-hidden">
@@ -799,7 +835,10 @@ export default function ChatRoom() {
       </motion.header>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto overscroll-contain pt-16 pb-4 space-y-2 sm:pt-4">
+      <div
+        className="flex-1 overflow-y-auto overscroll-contain pb-4 space-y-2 pt-16 sm:pt-4"
+        style={headerTop > 0 ? { paddingTop: 64 + headerTop } : undefined}
+      >
         {visibleMessages.length === 0 && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }} className="flex flex-col items-center justify-center h-full text-center px-6">
             <div className="w-12 h-12 rounded-2xl overflow-hidden mb-4">
