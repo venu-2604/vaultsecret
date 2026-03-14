@@ -12,6 +12,8 @@ import TypingIndicator from '@/components/TypingIndicator';
 import { toast } from 'sonner';
 import { format, isToday, isYesterday } from 'date-fns';
 
+const FORCE_INDEX_KEY = 'vaultsecret_force_index';
+
 interface ReplyInfo {
   id: string;
   content: string;
@@ -70,6 +72,20 @@ export default function ChatRoom() {
 
   const visibleMessages = messages.filter(msg => !hiddenMessageIds.has(msg.id));
 
+  // If a previous mobile session requested a forced index redirect, never show chatroom again on reopen
+  useEffect(() => {
+    const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
+    if (!isMobile) return;
+    try {
+      const shouldForceIndex = localStorage.getItem(FORCE_INDEX_KEY) === '1';
+      if (shouldForceIndex) {
+        window.location.replace('/');
+      }
+    } catch {
+      // ignore storage errors
+    }
+  }, []);
+
   // Lock document scroll so the header stays fixed when the virtual keyboard opens (mobile)
   useEffect(() => {
     const html = document.documentElement;
@@ -121,8 +137,17 @@ export default function ChatRoom() {
   useEffect(() => {
     if (!roomId || !userId) return;
     joinRoom(roomId, userId).then(result => {
-      if (result.ok) setJoined(true);
-      else setRoomError(result.error || 'Cannot join room');
+      if (result.ok) {
+        setJoined(true);
+        try {
+          // New/valid session: clear any previous forced-index flag
+          localStorage.removeItem(FORCE_INDEX_KEY);
+        } catch {
+          // ignore
+        }
+      } else {
+        setRoomError(result.error || 'Cannot join room');
+      }
     });
   }, [roomId, userId]);
 
@@ -177,6 +202,12 @@ export default function ChatRoom() {
       }
 
       if (isMobile && isHidden) {
+        // Mark that next time the browser opens on mobile we should force index instead of restoring chat
+        try {
+          localStorage.setItem(FORCE_INDEX_KEY, '1');
+        } catch {
+          // ignore
+        }
         // Redirect so when user returns they land on index; overlay already hid the chat for snapshot
         window.location.replace('/');
         return;
@@ -828,7 +859,17 @@ export default function ChatRoom() {
               </>
             )}
           </div>
-          <button onClick={() => window.location.replace('/')} className="p-2 rounded-xl hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-all">
+          <button
+            onClick={() => {
+              try {
+                localStorage.removeItem(FORCE_INDEX_KEY);
+              } catch {
+                // ignore
+              }
+              window.location.replace('/');
+            }}
+            className="p-2 rounded-xl hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-all"
+          >
             <LogOut className="w-4 h-4" />
           </button>
         </div>

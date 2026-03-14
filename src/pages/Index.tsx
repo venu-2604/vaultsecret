@@ -166,6 +166,12 @@ export default function Index() {
     if (!password.trim() || !user) return;
     setLoading(true);
     const roomId = await hashPassword(password);
+    try {
+      // User is intentionally starting a chat: clear any auto-logout flag
+      localStorage.removeItem('vaultsecret_force_index');
+    } catch {
+      // ignore
+    }
     navigate(`/chat/${roomId}`, { state: { password, userId: user.id, userName: user.full_name } });
   };
 
