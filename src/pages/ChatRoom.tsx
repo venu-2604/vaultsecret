@@ -61,14 +61,23 @@ export default function ChatRoom() {
   const [joined, setJoined] = useState(false);
   const [replyTo, setReplyTo] = useState<ReplyInfo | null>(null);
   const [editingMessage, setEditingMessage] = useState<{ id: string; content: string } | null>(null);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [hasMoreMessages, setHasMoreMessages] = useState(true);
+  const [showJumpToBottom, setShowJumpToBottom] = useState(false);
+  const [unseenNewCount, setUnseenNewCount] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const initialScrollDoneRef = useRef(false);
+  const isAtBottomRef = useRef(true);
+  const seenByOtherRef = useRef<Set<string>>(new Set());
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   const seenQueueRef = useRef<Set<string>>(new Set());
   const seenFlushRef = useRef<ReturnType<typeof setTimeout>>();
   const inactivityTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const presenceChannelRef = useRef<{ untrack: () => void; track: (state: object) => Promise<void> } | null>(null);
   const privacyOverlayRef = useRef<HTMLDivElement | null>(null);
+  const oldestTimestampRef = useRef<string | null>(null);
+  const loadingOlderRef = useRef(false);
 
   const visibleMessages = messages.filter(msg => !hiddenMessageIds.has(msg.id));
 
@@ -269,33 +278,58 @@ export default function ChatRoom() {
     return Array.from(map.entries()).map(([emoji, data]) => ({ emoji, ...data }));
   };
 
-  // Load existing messages
+  // Load messages with pagination (WhatsApp-style: newest first, load older on scroll up)
   useEffect(() => {
     if (!roomId || !encryptionKey || !userId || !joined) return;
 
-    const loadMessages = async () => {
-      const { data } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('room_id', roomId)
-        .order('created_at', { ascending: true })
-        .limit(2000);
+    const PAGE_SIZE = 50;
+    let cancelled = false;
 
+    // reset room-scoped pagination state
+    oldestTimestampRef.current = null;
+    loadingOlderRef.current = false;
+    setLoadingOlder(false);
+    setHasMoreMessages(true);
+    initialScrollDoneRef.current = false;
+    seenByOtherRef.current = new Set();
+
+    const loadInitial = async () => {
+      // Seen by other (for my sent messages)
       const { data: seenData } = await supabase
         .from('message_seen')
         .select('message_id, user_id')
         .eq('room_id', roomId)
         .neq('user_id', userId);
+      const seenByOther = new Set<string>();
+      (seenData || []).forEach(s => seenByOther.add((s as any).message_id));
+      seenByOtherRef.current = seenByOther;
 
+      // Hidden messages for me (used by visibleMessages filter)
       const { data: hiddenData } = await (supabase as any)
         .from('message_hidden')
         .select('message_id')
         .eq('room_id', roomId)
         .eq('user_id', userId);
+      if (!cancelled && hiddenData) {
+        setHiddenMessageIds(new Set((hiddenData as any[]).map((h: any) => h.message_id)));
+      }
 
-      // Load all reactions for this room's messages
-      const msgIds = (data || []).map(m => m.id);
-      let reactionsMap = new Map<string, { emoji: string; user_id: string }[]>();
+      // Most recent page of messages (desc), then reverse for ascending render
+      const { data } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('room_id', roomId)
+        .order('created_at', { ascending: false })
+        .limit(PAGE_SIZE);
+
+      const rows = (data || []) as any[];
+      const ordered = [...rows].reverse();
+      oldestTimestampRef.current = ordered[0]?.created_at ?? null;
+      setHasMoreMessages(rows.length === PAGE_SIZE);
+
+      // Reactions for this batch
+      const msgIds = ordered.map(m => m.id);
+      const reactionsMap = new Map<string, { emoji: string; user_id: string }[]>();
       if (msgIds.length > 0) {
         const { data: reactionsData } = await (supabase as any)
           .from('message_reactions')
@@ -308,43 +342,127 @@ export default function ChatRoom() {
         }
       }
 
-      const seenByOther = new Set<string>();
-      (seenData || []).forEach(s => seenByOther.add(s.message_id));
+      const decrypted = await Promise.all(
+        ordered.map(async (msg: any) => {
+          const deletedForEveryone = Boolean(msg.deleted_for_everyone);
+          const isImage = msg.message_type === 'image';
+          const content = deletedForEveryone
+            ? ''
+            : (isImage ? msg.encrypted_content : await decryptMessage(msg.encrypted_content, encryptionKey));
+          return {
+            id: msg.id,
+            content,
+            isOwn: msg.sender_id === userId,
+            timestamp: msg.created_at,
+            seen: msg.sender_id === userId && seenByOther.has(msg.id),
+            messageType: deletedForEveryone ? 'text' : msg.message_type,
+            replyToId: msg.reply_to_id || null,
+            edited: msg.edited || false,
+            deletedForEveryone,
+            reactions: aggregateReactions(reactionsMap.get(msg.id) || [], userId),
+          } as Message;
+        })
+      );
 
-      if (data) {
-        const decrypted = await Promise.all(
-          data.map(async (msg) => {
-            const deletedForEveryone = Boolean((msg as any).deleted_for_everyone);
-            const isImage = msg.message_type === 'image';
-            const content = deletedForEveryone
-              ? ''
-              : (isImage
-                ? msg.encrypted_content
-                : await decryptMessage(msg.encrypted_content, encryptionKey));
-            return {
-              id: msg.id,
-              content,
-              isOwn: msg.sender_id === userId,
-              timestamp: msg.created_at,
-              seen: msg.sender_id === userId && seenByOther.has(msg.id),
-              messageType: deletedForEveryone ? 'text' : msg.message_type,
-              replyToId: (msg as any).reply_to_id || null,
-              edited: (msg as any).edited || false,
-              deletedForEveryone,
-              reactions: aggregateReactions(reactionsMap.get(msg.id) || [], userId),
-            };
-          })
-        );
+      if (!cancelled) {
         setMessages(decrypted);
-      }
-
-      if (hiddenData) {
-        setHiddenMessageIds(new Set((hiddenData as any[]).map((h: any) => h.message_id)));
       }
     };
 
-    loadMessages();
+    loadInitial();
+
+    return () => {
+      cancelled = true;
+    };
   }, [roomId, encryptionKey, userId, joined]);
+
+  const loadOlderMessages = useCallback(async () => {
+    if (!roomId || !encryptionKey || !userId || !joined) return;
+    if (!hasMoreMessages) return;
+    if (loadingOlderRef.current) return;
+    const oldest = oldestTimestampRef.current;
+    if (!oldest) return;
+
+    const PAGE_SIZE = 50;
+    const container = messagesContainerRef.current;
+    const prevScrollHeight = container?.scrollHeight ?? 0;
+    const prevScrollTop = container?.scrollTop ?? 0;
+
+    loadingOlderRef.current = true;
+    setLoadingOlder(true);
+
+    try {
+      const { data } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('room_id', roomId)
+        .lt('created_at', oldest)
+        .order('created_at', { ascending: false })
+        .limit(PAGE_SIZE);
+
+      const rows = (data || []) as any[];
+      const ordered = [...rows].reverse();
+      if (ordered.length === 0) {
+        setHasMoreMessages(false);
+        return;
+      }
+
+      oldestTimestampRef.current = ordered[0]?.created_at ?? oldestTimestampRef.current;
+      if (rows.length < PAGE_SIZE) setHasMoreMessages(false);
+
+      // Reactions for this batch
+      const msgIds = ordered.map(m => m.id);
+      const reactionsMap = new Map<string, { emoji: string; user_id: string }[]>();
+      if (msgIds.length > 0) {
+        const { data: reactionsData } = await (supabase as any)
+          .from('message_reactions')
+          .select('message_id, emoji, user_id')
+          .in('message_id', msgIds);
+        for (const r of (reactionsData || []) as any[]) {
+          const existing = reactionsMap.get(r.message_id) || [];
+          existing.push({ emoji: r.emoji, user_id: r.user_id });
+          reactionsMap.set(r.message_id, existing);
+        }
+      }
+
+      const seenByOther = seenByOtherRef.current;
+      const decrypted = await Promise.all(
+        ordered.map(async (msg: any) => {
+          const deletedForEveryone = Boolean(msg.deleted_for_everyone);
+          const isImage = msg.message_type === 'image';
+          const content = deletedForEveryone
+            ? ''
+            : (isImage ? msg.encrypted_content : await decryptMessage(msg.encrypted_content, encryptionKey));
+          return {
+            id: msg.id,
+            content,
+            isOwn: msg.sender_id === userId,
+            timestamp: msg.created_at,
+            seen: msg.sender_id === userId && seenByOther.has(msg.id),
+            messageType: deletedForEveryone ? 'text' : msg.message_type,
+            replyToId: msg.reply_to_id || null,
+            edited: msg.edited || false,
+            deletedForEveryone,
+            reactions: aggregateReactions(reactionsMap.get(msg.id) || [], userId),
+          } as Message;
+        })
+      );
+
+      setMessages(prev => [...decrypted, ...prev]);
+
+      // Preserve scroll position after prepending older messages
+      queueMicrotask(() => {
+        const el = messagesContainerRef.current;
+        if (!el) return;
+        const newScrollHeight = el.scrollHeight;
+        const delta = newScrollHeight - prevScrollHeight;
+        el.scrollTop = prevScrollTop + delta;
+      });
+    } finally {
+      loadingOlderRef.current = false;
+      setLoadingOlder(false);
+    }
+  }, [roomId, encryptionKey, userId, joined, hasMoreMessages, aggregateReactions]);
 
   // Realtime: new messages + edits + deletes
   useEffect(() => {
@@ -375,6 +493,12 @@ export default function ChatRoom() {
             deletedForEveryone,
             reactions: [],
           }]);
+
+          // If user is reading older messages (not at bottom), show jump button + unseen counter (WhatsApp-style)
+          if (!isAtBottomRef.current) {
+            setUnseenNewCount(c => c + 1);
+            setShowJumpToBottom(true);
+          }
         }
       )
       .on(
@@ -431,6 +555,7 @@ export default function ChatRoom() {
         (payload) => {
           const seen = payload.new as { message_id: string; user_id: string };
           if (seen.user_id === userId) return;
+          seenByOtherRef.current.add(seen.message_id);
           setMessages(prev => prev.map(m => m.id === seen.message_id ? { ...m, seen: true } : m));
         }
       )
@@ -525,12 +650,35 @@ export default function ChatRoom() {
   // Auto-scroll
   useEffect(() => {
     if (!messagesEndRef.current) return;
+    if (loadingOlderRef.current) return;
+    if (!isAtBottomRef.current && initialScrollDoneRef.current) return;
     const behavior: ScrollBehavior = initialScrollDoneRef.current ? 'smooth' : 'auto';
     messagesEndRef.current.scrollIntoView({ behavior });
     if (!initialScrollDoneRef.current && visibleMessages.length > 0) {
       initialScrollDoneRef.current = true;
     }
   }, [visibleMessages.length, isTyping]);
+
+  const handleMessagesScroll = useCallback(() => {
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    isAtBottomRef.current = distanceFromBottom < 80;
+    setShowJumpToBottom(!isAtBottomRef.current);
+    if (isAtBottomRef.current) setUnseenNewCount(0);
+
+    // Load older when near the top
+    if (el.scrollTop < 80 && hasMoreMessages && !loadingOlderRef.current) {
+      loadOlderMessages();
+    }
+  }, [hasMoreMessages, loadOlderMessages]);
+
+  const jumpToBottom = useCallback(() => {
+    setUnseenNewCount(0);
+    setShowJumpToBottom(false);
+    isAtBottomRef.current = true;
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, []);
 
   // Flush seen queue
   const flushSeenQueue = useCallback(() => {
@@ -879,7 +1027,14 @@ export default function ChatRoom() {
       <div
         className="flex-1 overflow-y-auto overscroll-contain pb-4 space-y-2 pt-16 sm:pt-4"
         style={headerTop > 0 ? { paddingTop: 64 + headerTop } : undefined}
+        ref={messagesContainerRef}
+        onScroll={handleMessagesScroll}
       >
+        {loadingOlder && (
+          <div className="flex items-center justify-center py-2">
+            <div className="text-[11px] text-muted-foreground">Loading older messages…</div>
+          </div>
+        )}
         {visibleMessages.length === 0 && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }} className="flex flex-col items-center justify-center h-full text-center px-6">
             <div className="w-12 h-12 rounded-2xl overflow-hidden mb-4">
@@ -938,6 +1093,25 @@ export default function ChatRoom() {
         editingMessage={editingMessage}
         onCancelEdit={() => setEditingMessage(null)}
       />
+
+      {showJumpToBottom && (
+        <button
+          type="button"
+          onClick={jumpToBottom}
+          className="fixed left-1/2 -translate-x-1/2 z-40 rounded-full shadow-lg border border-border/50 bg-background/95 backdrop-blur px-3 py-2 text-xs text-foreground hover:bg-muted/50 transition"
+          style={{ bottom: headerTop > 0 ? 104 : 96 }}
+        >
+          <span className="flex items-center gap-2">
+            <span className="text-sm leading-none">↓</span>
+            <span>New messages</span>
+            {unseenNewCount > 0 && (
+              <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-success text-success-foreground text-[11px] flex items-center justify-center font-semibold">
+                {unseenNewCount > 99 ? '99+' : unseenNewCount}
+              </span>
+            )}
+          </span>
+        </button>
+      )}
     </div>
   );
 }
