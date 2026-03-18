@@ -279,7 +279,7 @@ export default function ChatRoom() {
         .select('*')
         .eq('room_id', roomId)
         .order('created_at', { ascending: true })
-        .limit(200);
+        .limit(2000);
 
       const { data: seenData } = await supabase
         .from('message_seen')
