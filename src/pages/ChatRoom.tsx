@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { LogOut, Copy, Check, WifiOff } from 'lucide-react';
+import { LogOut, WifiOff } from 'lucide-react';
 import vsLogo from '@/assets/vs-logo.png';
 import { supabase } from '@/integrations/supabase/client';
 import { deriveKey, encryptMessage, decryptMessage } from '@/lib/crypto';
@@ -54,7 +54,7 @@ export default function ChatRoom() {
   const [encryptionKey, setEncryptionKey] = useState<CryptoKey | null>(null);
   const [isTyping, setIsTyping] = useState(false);
   const [peerOnline, setPeerOnline] = useState(false);
-  const [copied, setCopied] = useState(false);
+  // Note: removed "copied" UI because header now shows last-seen text only.
   const [blurred, setBlurred] = useState(false);
   const [headerTop, setHeaderTop] = useState(0);
   const [roomError, setRoomError] = useState('');
@@ -74,10 +74,15 @@ export default function ChatRoom() {
   const seenQueueRef = useRef<Set<string>>(new Set());
   const seenFlushRef = useRef<ReturnType<typeof setTimeout>>();
   const inactivityTimerRef = useRef<ReturnType<typeof setTimeout>>();
-  const presenceChannelRef = useRef<{ untrack: () => void; track: (state: object) => Promise<void> } | null>(null);
+  // Supabase presence track() return type differs between versions; keep ref typed loosely.
+  const presenceChannelRef = useRef<{ untrack: () => void; track: (state: object) => Promise<any> } | null>(null);
   const privacyOverlayRef = useRef<HTMLDivElement | null>(null);
   const oldestTimestampRef = useRef<string | null>(null);
   const loadingOlderRef = useRef(false);
+
+  // Room-based Last Seen (per-room, based on room_participants table)
+  const [otherParticipant, setOtherParticipant] = useState<{ is_online: boolean; last_active: string | null } | null>(null);
+  const [lastSeenLoaded, setLastSeenLoaded] = useState(false);
 
   const visibleMessages = messages.filter(msg => !hiddenMessageIds.has(msg.id));
 
@@ -142,6 +147,131 @@ export default function ChatRoom() {
     deriveKey(password, roomId).then(setEncryptionKey);
   }, [password, roomId]);
 
+  // Room-participants upsert helper (room-based Last Seen writes)
+  const upsertRoomParticipant = useCallback(
+    async (
+      updates: { is_online: boolean; last_active?: string },
+      logSuffix: string
+    ) => {
+      if (!roomId || !userId) return;
+      console.log(`[LastSeen] upsert ${logSuffix}`, { roomId, userId });
+      const payload: any = {
+        room_id: roomId,
+        user_id: userId,
+        is_online: updates.is_online,
+      };
+      if (updates.last_active !== undefined) payload.last_active = updates.last_active;
+
+      const { error } = await supabase.from('room_participants').upsert(payload, {
+        onConflict: 'room_id,user_id',
+      });
+      if (error) console.error(`[LastSeen] upsert ${logSuffix} failed`, error.message);
+    },
+    [roomId, userId]
+  );
+
+  // Room-based Last Seen: mark current user online on enter, offline on leave.
+  // Does NOT modify last_active on leave.
+  useEffect(() => {
+    if (!roomId || !userId || !joined) return;
+
+    const markOnline = async () => {
+      await upsertRoomParticipant(
+        // last_active should represent "when user last left/offlined", so do not update it on enter
+        { is_online: true },
+        'enter'
+      );
+    };
+
+    const markOffline = async () => {
+      // When user leaves the room, store last_active = now
+      await upsertRoomParticipant(
+        { is_online: false, last_active: new Date().toISOString() },
+        'leave'
+      );
+    };
+
+    void markOnline();
+    return () => {
+      void markOffline();
+    };
+  }, [roomId, userId, joined]);
+
+  // Extra safety: if the user closes/navigates away, try to set is_online=false.
+  // (May not always complete on abrupt kills, but improves reliability.)
+  useEffect(() => {
+    if (!roomId || !userId || !joined) return;
+    const markOfflineOnUnload = () => {
+      void upsertRoomParticipant(
+        { is_online: false, last_active: new Date().toISOString() },
+        'unload'
+      );
+    };
+    window.addEventListener('pagehide', markOfflineOnUnload);
+    window.addEventListener('beforeunload', markOfflineOnUnload);
+    return () => {
+      window.removeEventListener('pagehide', markOfflineOnUnload);
+      window.removeEventListener('beforeunload', markOfflineOnUnload);
+    };
+  }, [roomId, userId, joined, upsertRoomParticipant]);
+
+  // Room-based Last Seen: load and realtime subscribe to other participant state.
+  useEffect(() => {
+    if (!roomId || !userId || !joined) return;
+
+    let cancelled = false;
+
+    setLastSeenLoaded(false);
+
+    const loadParticipants = async () => {
+      const { data } = await (supabase as any)
+        .from('room_participants')
+        .select('user_id, is_online, last_active')
+        .eq('room_id', roomId);
+
+      if (cancelled) return;
+
+      const other = (data || []).find((p: any) => p.user_id !== userId) as
+        | { user_id: string; is_online: boolean; last_active: string | null }
+        | undefined;
+
+      if (!other) setOtherParticipant(null);
+      else setOtherParticipant({ is_online: Boolean(other.is_online), last_active: other.last_active ?? null });
+
+      setLastSeenLoaded(true);
+    };
+
+    void loadParticipants();
+
+    const channel = supabase
+      .channel(`room-participants-last-seen-${roomId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'room_participants',
+          filter: `room_id=eq.${roomId}`,
+        },
+        (payload) => {
+          const row = (payload.new || payload.old) as any;
+          if (!row) return;
+          if (row.user_id === userId) return; // only care about other user
+          setOtherParticipant({
+            is_online: Boolean(row.is_online),
+            last_active: row.last_active ?? null,
+          });
+          setLastSeenLoaded(true);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      cancelled = true;
+      supabase.removeChannel(channel);
+    };
+  }, [roomId, userId, joined]);
+
   // Join room
   useEffect(() => {
     if (!roomId || !userId) return;
@@ -189,7 +319,7 @@ export default function ChatRoom() {
       privacyOverlayRef.current = overlay;
     };
 
-    const handleVisibility = () => {
+    const handleVisibility = async () => {
       const isHidden = document.hidden;
       const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
 
@@ -208,6 +338,18 @@ export default function ChatRoom() {
         } else {
           presence.track({ online: true });
         }
+      }
+
+      // Room-based last seen:
+      // - is_online toggles on background/foreground
+      // - last_active should represent the time we went offline/left (so update only when hidden/offline)
+      if (isHidden) {
+        await upsertRoomParticipant(
+          { is_online: false, last_active: new Date().toISOString() },
+          'visibility_hidden'
+        );
+      } else {
+        await upsertRoomParticipant({ is_online: true }, 'visibility_visible');
       }
 
       if (isMobile && isHidden) {
@@ -230,7 +372,7 @@ export default function ChatRoom() {
       document.removeEventListener('visibilitychange', handleVisibility);
       removeOverlay();
     };
-  }, []);
+  }, [roomId, userId, upsertRoomParticipant]);
 
   // Auto-logout after inactivity (5 minutes)
   const resetInactivityTimer = useCallback(() => {
@@ -932,10 +1074,28 @@ export default function ChatRoom() {
   const copyRoomId = () => {
     if (roomId) {
       navigator.clipboard.writeText(roomId.slice(0, 12) + '...');
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
     }
   };
+
+  const formatLastSeen = (isoTimestamp: string) => {
+    const d = new Date(isoTimestamp);
+    if (Number.isNaN(d.getTime())) return 'No last seen';
+
+    const time = format(d, 'hh:mm a');
+    if (isToday(d)) return `Last seen at ${time}`;
+    if (isYesterday(d)) return `Last seen yesterday at ${time}`;
+    return `Last seen on ${format(d, 'dd MMM')} at ${time}`;
+  };
+
+  const otherIsOnline = otherParticipant?.is_online === true;
+  const lastSeenText =
+    !lastSeenLoaded
+      ? ''
+      : otherIsOnline
+        ? ''
+        : !otherParticipant || !otherParticipant.last_active
+          ? 'No last seen'
+          : formatLastSeen(otherParticipant.last_active);
 
   if (!password || !roomId || !userId) return null;
 
@@ -983,10 +1143,14 @@ export default function ChatRoom() {
           </div>
           <div>
             <h1 className="text-sm font-semibold gradient-text">VaultSecret</h1>
-            <button onClick={copyRoomId} className="flex items-center gap-1 text-[10px] font-mono text-muted-foreground hover:text-foreground transition-colors">
-              {roomId.slice(0, 16)}...
-              {copied ? <Check className="w-2.5 h-2.5" /> : <Copy className="w-2.5 h-2.5" />}
-            </button>
+            {lastSeenText ? (
+              <button
+                onClick={copyRoomId}
+                className="flex items-center gap-1 text-[10px] font-mono text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {lastSeenText}
+              </button>
+            ) : null}
           </div>
         </div>
 
@@ -1008,12 +1172,23 @@ export default function ChatRoom() {
             )}
           </div>
           <button
-            onClick={() => {
+            onClick={async () => {
               try {
                 localStorage.removeItem(FORCE_INDEX_KEY);
               } catch {
                 // ignore
               }
+
+              // Ensure room-based last seen marks current user offline before leaving.
+              try {
+              await upsertRoomParticipant(
+                { is_online: false, last_active: new Date().toISOString() },
+                'manual_logout'
+              );
+              } catch {
+                // ignore
+              }
+
               window.location.replace('/');
             }}
             className="p-2 rounded-xl hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-all"
