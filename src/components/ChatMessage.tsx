@@ -64,6 +64,8 @@ export default function ChatMessage({
   }, [id, isOwn, onVisible]);
 
   const isImage = messageType === 'image';
+  const isVideo = messageType === 'video';
+  const isMedia = isImage || isVideo;
 
   const handleDragEnd = (_: any, info: PanInfo) => {
     if (deletedForEveryone) return;
@@ -178,6 +180,8 @@ export default function ChatMessage({
               </span>
               {replyTo.messageType === 'image' ? (
                 <span className="italic">📷 Photo</span>
+              ) : replyTo.messageType === 'video' ? (
+                <span className="italic">🎬 Video</span>
               ) : (
                 <span className="line-clamp-2">{replyTo.content}</span>
               )}
@@ -197,11 +201,11 @@ export default function ChatMessage({
           >
             <div
               className={`relative rounded-2xl ${
-                isImage ? 'p-1' : 'px-4 py-2.5'
+                isMedia ? 'p-1' : 'px-4 py-2.5'
               } ${
                 isOwn
-                  ? isImage ? 'rounded-br-md' : 'gradient-primary text-primary-foreground rounded-br-md'
-                  : isImage ? 'rounded-bl-md' : 'glass rounded-bl-md'
+                  ? isMedia ? 'rounded-br-md' : 'gradient-primary text-primary-foreground rounded-br-md'
+                  : isMedia ? 'rounded-bl-md' : 'glass rounded-bl-md'
               }`}
             >
               {isImage ? (
@@ -212,14 +216,22 @@ export default function ChatMessage({
                   className="rounded-xl max-w-[280px] max-h-[320px] object-cover cursor-pointer hover:opacity-90 transition-opacity"
                   loading="lazy"
                 />
+              ) : isVideo ? (
+                <video
+                  src={content}
+                  controls
+                  playsInline
+                  className="rounded-xl max-w-[280px] max-h-[320px] bg-black/50"
+                  preload="metadata"
+                />
               ) : (
                 <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{content}</p>
               )}
-              <div className={`flex items-center gap-1 mt-1 ${isImage ? 'px-2 pb-1' : ''} ${isOwn ? 'justify-end' : 'justify-start'}`}>
+              <div className={`flex items-center gap-1 mt-1 ${isMedia ? 'px-2 pb-1' : ''} ${isOwn ? 'justify-end' : 'justify-start'}`}>
                 {edited && (
                   <span className="text-[9px] opacity-50 italic mr-0.5">edited</span>
                 )}
-                <span className={`text-[10px] opacity-60 font-mono ${isImage ? 'text-muted-foreground' : ''}`}>
+                <span className={`text-[10px] opacity-60 font-mono ${isMedia ? 'text-muted-foreground' : ''}`}>
                   {new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })}
                 </span>
                 {isOwn && (

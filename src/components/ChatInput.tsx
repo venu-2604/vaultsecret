@@ -11,7 +11,8 @@ interface ReplyInfo {
 
 interface ChatInputProps {
   onSend: (message: string) => void;
-  onSendImage: (file: File) => Promise<void>;
+  /** Image or video file; parent uploads and sets message_type */
+  onSendMedia: (file: File) => Promise<void>;
   onTyping: () => void;
   disabled?: boolean;
   replyTo?: ReplyInfo | null;
@@ -22,7 +23,7 @@ interface ChatInputProps {
 
 export default function ChatInput({
   onSend,
-  onSendImage,
+  onSendMedia,
   onTyping,
   disabled,
   replyTo,
@@ -31,7 +32,7 @@ export default function ChatInput({
   onCancelEdit,
 }: ChatInputProps) {
   const [text, setText] = useState('');
-  const [imagePreview, setImagePreview] = useState<{ file: File; url: string } | null>(null);
+  const [mediaPreview, setMediaPreview] = useState<{ file: File; url: string; kind: 'image' | 'video' } | null>(null);
   const [uploading, setUploading] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -52,12 +53,12 @@ export default function ChatInput({
   const handleSend = async () => {
     if (uploading) return;
 
-    if (imagePreview) {
+    if (mediaPreview) {
       setUploading(true);
       try {
-        await onSendImage(imagePreview.file);
-        URL.revokeObjectURL(imagePreview.url);
-        setImagePreview(null);
+        await onSendMedia(mediaPreview.file);
+        URL.revokeObjectURL(mediaPreview.url);
+        setMediaPreview(null);
       } finally {
         setUploading(false);
       }
@@ -86,21 +87,24 @@ export default function ChatInput({
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!file.type.startsWith('image/')) return;
-    if (file.size > 10 * 1024 * 1024) return;
+    const isImage = file.type.startsWith('image/');
+    const isVideo = file.type.startsWith('video/');
+    if (!isImage && !isVideo) return;
+    if (isImage && file.size > 10 * 1024 * 1024) return;
+    if (isVideo && file.size > 80 * 1024 * 1024) return;
     const url = URL.createObjectURL(file);
-    setImagePreview({ file, url });
+    setMediaPreview({ file, url, kind: isVideo ? 'video' : 'image' });
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const clearPreview = () => {
-    if (imagePreview) {
-      URL.revokeObjectURL(imagePreview.url);
-      setImagePreview(null);
+    if (mediaPreview) {
+      URL.revokeObjectURL(mediaPreview.url);
+      setMediaPreview(null);
     }
   };
 
-  const canSend = imagePreview || text.trim();
+  const canSend = mediaPreview || text.trim();
 
   return (
     <motion.div
@@ -153,6 +157,8 @@ export default function ChatInput({
                 </span>
                 {replyTo.messageType === 'image' ? (
                   <span className="text-xs text-muted-foreground italic">📷 Photo</span>
+                ) : replyTo.messageType === 'video' ? (
+                  <span className="text-xs text-muted-foreground italic">🎬 Video</span>
                 ) : (
                   <p className="text-xs text-muted-foreground truncate">{replyTo.content}</p>
                 )}
@@ -168,14 +174,24 @@ export default function ChatInput({
         )}
       </AnimatePresence>
 
-      {/* Image Preview */}
-      {imagePreview && (
-        <div className="mb-2 relative inline-block">
-          <img
-            src={imagePreview.url}
-            alt="Preview"
-            className="h-24 w-24 object-cover rounded-xl border border-border/50"
-          />
+      {/* Image / video preview */}
+      {mediaPreview && (
+        <div className="mb-2 relative inline-block max-w-full">
+          {mediaPreview.kind === 'image' ? (
+            <img
+              src={mediaPreview.url}
+              alt="Preview"
+              className="h-24 w-24 object-cover rounded-xl border border-border/50"
+            />
+          ) : (
+            <video
+              src={mediaPreview.url}
+              className="h-28 max-w-[200px] rounded-xl border border-border/50 bg-black/40"
+              muted
+              playsInline
+              controls
+            />
+          )}
           <button
             onClick={clearPreview}
             className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center"
@@ -189,7 +205,7 @@ export default function ChatInput({
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/*"
+          accept="image/*,video/*"
           onChange={handleFileSelect}
           className="hidden"
         />
@@ -206,7 +222,7 @@ export default function ChatInput({
           onChange={e => handleChange(e.target.value)}
           onKeyDown={handleKeyDown}
           disabled={disabled || uploading}
-          placeholder={imagePreview ? "Send photo..." : "Type a secret message..."}
+          placeholder={mediaPreview ? (mediaPreview.kind === 'video' ? 'Send video...' : 'Send photo...') : 'Type a secret message...'}
           rows={1}
           className="flex-1 bg-transparent resize-none outline-none text-sm text-foreground placeholder:text-muted-foreground px-3 py-2 max-h-32 min-h-[40px]"
           style={{ scrollbarWidth: 'none' }}

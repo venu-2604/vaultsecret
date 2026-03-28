@@ -487,10 +487,10 @@ export default function ChatRoom() {
       const decrypted = await Promise.all(
         ordered.map(async (msg: any) => {
           const deletedForEveryone = Boolean(msg.deleted_for_everyone);
-          const isImage = msg.message_type === 'image';
+          const isMediaUrl = msg.message_type === 'image' || msg.message_type === 'video';
           const content = deletedForEveryone
             ? ''
-            : (isImage ? msg.encrypted_content : await decryptMessage(msg.encrypted_content, encryptionKey));
+            : (isMediaUrl ? msg.encrypted_content : await decryptMessage(msg.encrypted_content, encryptionKey));
           return {
             id: msg.id,
             content,
@@ -571,10 +571,10 @@ export default function ChatRoom() {
       const decrypted = await Promise.all(
         ordered.map(async (msg: any) => {
           const deletedForEveryone = Boolean(msg.deleted_for_everyone);
-          const isImage = msg.message_type === 'image';
+          const isMediaUrl = msg.message_type === 'image' || msg.message_type === 'video';
           const content = deletedForEveryone
             ? ''
-            : (isImage ? msg.encrypted_content : await decryptMessage(msg.encrypted_content, encryptionKey));
+            : (isMediaUrl ? msg.encrypted_content : await decryptMessage(msg.encrypted_content, encryptionKey));
           return {
             id: msg.id,
             content,
@@ -619,10 +619,10 @@ export default function ChatRoom() {
           const msg = payload.new as any;
           if (msg.sender_id === userId) return;
           const deletedForEveryone = Boolean(msg.deleted_for_everyone);
-          const isImage = msg.message_type === 'image';
+          const isMediaUrl = msg.message_type === 'image' || msg.message_type === 'video';
           const content = deletedForEveryone
             ? ''
-            : (isImage ? msg.encrypted_content : await decryptMessage(msg.encrypted_content, encryptionKey));
+            : (isMediaUrl ? msg.encrypted_content : await decryptMessage(msg.encrypted_content, encryptionKey));
           setMessages(prev => [...prev, {
             id: msg.id,
             content,
@@ -649,10 +649,10 @@ export default function ChatRoom() {
         async (payload) => {
           const msg = payload.new as any;
           const deletedForEveryone = Boolean(msg.deleted_for_everyone);
-          const isImage = msg.message_type === 'image';
+          const isMediaUrl = msg.message_type === 'image' || msg.message_type === 'video';
           const content = deletedForEveryone
             ? ''
-            : (isImage ? msg.encrypted_content : await decryptMessage(msg.encrypted_content, encryptionKey));
+            : (isMediaUrl ? msg.encrypted_content : await decryptMessage(msg.encrypted_content, encryptionKey));
           setMessages(prev =>
             prev.map(m =>
               m.id === msg.id
@@ -918,9 +918,11 @@ export default function ChatRoom() {
     [editingMessage, handleEdit, encryptionKey, roomId, userId, replyTo]
   );
 
-  const handleSendImage = useCallback(async (file: File) => {
+  const handleSendMedia = useCallback(async (file: File) => {
     if (!roomId || !userId) return;
-    const ext = file.name.split('.').pop() || 'jpg';
+    const isVideo = file.type.startsWith('video/');
+    const defaultExt = isVideo ? 'mp4' : 'jpg';
+    const ext = file.name.split('.').pop() || defaultExt;
     const path = `${roomId}/${crypto.randomUUID()}.${ext}`;
 
     const { error: uploadError } = await supabase.storage
@@ -933,6 +935,7 @@ export default function ChatRoom() {
     const publicUrl = urlData.publicUrl;
     const messageId = crypto.randomUUID();
     const currentReplyToId = replyTo?.id || null;
+    const messageType = isVideo ? 'video' : 'image';
 
     setMessages(prev => [...prev, {
       id: messageId,
@@ -940,7 +943,7 @@ export default function ChatRoom() {
       isOwn: true,
       timestamp: new Date().toISOString(),
       seen: false,
-      messageType: 'image',
+      messageType,
       replyToId: currentReplyToId,
       reactions: [],
     }]);
@@ -951,7 +954,7 @@ export default function ChatRoom() {
       room_id: roomId,
       sender_id: userId,
       encrypted_content: publicUrl,
-      message_type: 'image',
+      message_type: messageType,
       reply_to_id: currentReplyToId,
     } as any);
   }, [roomId, userId, replyTo]);
@@ -1260,7 +1263,7 @@ export default function ChatRoom() {
       {/* Input */}
       <ChatInput
         onSend={handleSend}
-        onSendImage={handleSendImage}
+        onSendMedia={handleSendMedia}
         onTyping={handleTyping}
         disabled={!encryptionKey || !joined}
         replyTo={replyTo}
