@@ -667,7 +667,7 @@ export default function ChatRoom() {
           const content = deletedForEveryone
             ? ''
             : (isMediaUrl ? msg.encrypted_content : await decryptMessage(msg.encrypted_content, encryptionKey));
-          setMessages(prev => [...prev, {
+          const newMessage: Message = {
             id: msg.id,
             content,
             isOwn: false,
@@ -678,7 +678,14 @@ export default function ChatRoom() {
             edited: msg.edited || false,
             deletedForEveryone,
             reactions: [],
-          }]);
+          };
+
+          // If this message replies to something not loaded, fetch it into cache
+          if (msg.reply_to_id && !replyCacheRef.current.has(msg.reply_to_id)) {
+            await fetchMissingReplies([newMessage], encryptionKey, userId);
+          }
+
+          setMessages(prev => [...prev, newMessage]);
 
           // If user is reading older messages (not at bottom), show jump button + unseen counter (WhatsApp-style)
           if (!isAtBottomRef.current) {
