@@ -545,6 +545,10 @@ export default function ChatRoom() {
 
       if (!cancelled) {
         setMessages(decrypted);
+        // Fetch reply-to messages not in this batch
+        await fetchMissingReplies(decrypted, encryptionKey, userId);
+        // Trigger re-render so cached replies show up
+        if (!cancelled) setMessages(prev => [...prev]);
       }
     };
 
