@@ -883,13 +883,18 @@ export default function ChatRoom() {
   const getReplyInfo = useCallback((replyToId: string | null | undefined): ReplyInfo | null => {
     if (!replyToId) return null;
     const msg = messages.find(m => m.id === replyToId);
-    if (!msg) return null;
-    return {
-      id: msg.id,
-      content: msg.deletedForEveryone ? 'This message was deleted' : msg.content,
-      isOwn: msg.isOwn,
-      messageType: msg.deletedForEveryone ? 'text' : msg.messageType,
-    };
+    if (msg) {
+      return {
+        id: msg.id,
+        content: msg.deletedForEveryone ? 'This message was deleted' : msg.content,
+        isOwn: msg.isOwn,
+        messageType: msg.deletedForEveryone ? 'text' : msg.messageType,
+      };
+    }
+    // Check the reply cache for messages not in the current loaded set
+    const cached = replyCacheRef.current.get(replyToId);
+    if (cached) return cached;
+    return null;
   }, [messages]);
 
   const handleEdit = useCallback(
