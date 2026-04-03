@@ -1238,17 +1238,14 @@ export default function ChatRoom() {
                 // ignore
               }
 
-              // Ensure room-based last seen marks current user offline before leaving.
-              try {
-              await upsertRoomParticipant(
+              // Navigate immediately for fast render, update DB in background
+              navigate('/', { replace: true });
+
+              // Fire-and-forget: mark offline
+              upsertRoomParticipant(
                 { is_online: false, last_active: new Date().toISOString() },
                 'manual_logout'
-              );
-              } catch {
-                // ignore
-              }
-
-              window.location.replace('/');
+              ).catch(() => {});
             }}
             className="p-2 rounded-xl hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-all"
           >
