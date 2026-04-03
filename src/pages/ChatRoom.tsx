@@ -79,6 +79,7 @@ export default function ChatRoom() {
   const privacyOverlayRef = useRef<HTMLDivElement | null>(null);
   const oldestTimestampRef = useRef<string | null>(null);
   const loadingOlderRef = useRef(false);
+  const replyCacheRef = useRef<Map<string, ReplyInfo>>(new Map());
 
   // Room-based Last Seen (per-room, based on room_participants table)
   const [otherParticipant, setOtherParticipant] = useState<{ is_online: boolean; last_active: string | null } | null>(null);
