@@ -631,6 +631,9 @@ export default function ChatRoom() {
         })
       );
 
+      // Fetch missing reply-to messages for the older batch
+      await fetchMissingReplies(decrypted, encryptionKey, userId);
+
       setMessages(prev => [...decrypted, ...prev]);
 
       // Preserve scroll position after prepending older messages
