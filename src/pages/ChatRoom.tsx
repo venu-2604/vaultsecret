@@ -421,6 +421,42 @@ export default function ChatRoom() {
     return Array.from(map.entries()).map(([emoji, data]) => ({ emoji, ...data }));
   };
 
+  // Fetch reply-to messages that aren't in the local messages array and cache them
+  const fetchMissingReplies = useCallback(async (
+    loadedMessages: Message[],
+    key: CryptoKey,
+    currentUserId: string
+  ) => {
+    const loadedIds = new Set(loadedMessages.map(m => m.id));
+    const missingReplyIds = loadedMessages
+      .filter(m => m.replyToId && !loadedIds.has(m.replyToId) && !replyCacheRef.current.has(m.replyToId))
+      .map(m => m.replyToId as string);
+
+    if (missingReplyIds.length === 0) return;
+
+    const uniqueIds = [...new Set(missingReplyIds)];
+    const { data } = await supabase
+      .from('messages')
+      .select('*')
+      .in('id', uniqueIds);
+
+    if (!data) return;
+
+    for (const msg of data as any[]) {
+      const deletedForEveryone = Boolean(msg.deleted_for_everyone);
+      const isMediaUrl = msg.message_type === 'image' || msg.message_type === 'video';
+      const content = deletedForEveryone
+        ? 'This message was deleted'
+        : (isMediaUrl ? msg.encrypted_content : await decryptMessage(msg.encrypted_content, key));
+      replyCacheRef.current.set(msg.id, {
+        id: msg.id,
+        content,
+        isOwn: msg.sender_id === currentUserId,
+        messageType: deletedForEveryone ? 'text' : msg.message_type,
+      });
+    }
+  }, []);
+
   // Load messages with pagination (WhatsApp-style: newest first, load older on scroll up)
   useEffect(() => {
     if (!roomId || !encryptionKey || !userId || !joined) return;
