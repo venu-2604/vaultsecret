@@ -79,6 +79,7 @@ export default function ChatRoom() {
   const privacyOverlayRef = useRef<HTMLDivElement | null>(null);
   const oldestTimestampRef = useRef<string | null>(null);
   const loadingOlderRef = useRef(false);
+  const replyCacheRef = useRef<Map<string, ReplyInfo>>(new Map());
 
   // Room-based Last Seen (per-room, based on room_participants table)
   const [otherParticipant, setOtherParticipant] = useState<{ is_online: boolean; last_active: string | null } | null>(null);
@@ -420,6 +421,42 @@ export default function ChatRoom() {
     return Array.from(map.entries()).map(([emoji, data]) => ({ emoji, ...data }));
   };
 
+  // Fetch reply-to messages that aren't in the local messages array and cache them
+  const fetchMissingReplies = useCallback(async (
+    loadedMessages: Message[],
+    key: CryptoKey,
+    currentUserId: string
+  ) => {
+    const loadedIds = new Set(loadedMessages.map(m => m.id));
+    const missingReplyIds = loadedMessages
+      .filter(m => m.replyToId && !loadedIds.has(m.replyToId) && !replyCacheRef.current.has(m.replyToId))
+      .map(m => m.replyToId as string);
+
+    if (missingReplyIds.length === 0) return;
+
+    const uniqueIds = [...new Set(missingReplyIds)];
+    const { data } = await supabase
+      .from('messages')
+      .select('*')
+      .in('id', uniqueIds);
+
+    if (!data) return;
+
+    for (const msg of data as any[]) {
+      const deletedForEveryone = Boolean(msg.deleted_for_everyone);
+      const isMediaUrl = msg.message_type === 'image' || msg.message_type === 'video';
+      const content = deletedForEveryone
+        ? 'This message was deleted'
+        : (isMediaUrl ? msg.encrypted_content : await decryptMessage(msg.encrypted_content, key));
+      replyCacheRef.current.set(msg.id, {
+        id: msg.id,
+        content,
+        isOwn: msg.sender_id === currentUserId,
+        messageType: deletedForEveryone ? 'text' : msg.message_type,
+      });
+    }
+  }, []);
+
   // Load messages with pagination (WhatsApp-style: newest first, load older on scroll up)
   useEffect(() => {
     if (!roomId || !encryptionKey || !userId || !joined) return;
@@ -508,6 +545,10 @@ export default function ChatRoom() {
 
       if (!cancelled) {
         setMessages(decrypted);
+        // Fetch reply-to messages not in this batch
+        await fetchMissingReplies(decrypted, encryptionKey, userId);
+        // Trigger re-render so cached replies show up
+        if (!cancelled) setMessages(prev => [...prev]);
       }
     };
 
@@ -590,6 +631,9 @@ export default function ChatRoom() {
         })
       );
 
+      // Fetch missing reply-to messages for the older batch
+      await fetchMissingReplies(decrypted, encryptionKey, userId);
+
       setMessages(prev => [...decrypted, ...prev]);
 
       // Preserve scroll position after prepending older messages
@@ -623,7 +667,7 @@ export default function ChatRoom() {
           const content = deletedForEveryone
             ? ''
             : (isMediaUrl ? msg.encrypted_content : await decryptMessage(msg.encrypted_content, encryptionKey));
-          setMessages(prev => [...prev, {
+          const newMessage: Message = {
             id: msg.id,
             content,
             isOwn: false,
@@ -634,7 +678,14 @@ export default function ChatRoom() {
             edited: msg.edited || false,
             deletedForEveryone,
             reactions: [],
-          }]);
+          };
+
+          // If this message replies to something not loaded, fetch it into cache
+          if (msg.reply_to_id && !replyCacheRef.current.has(msg.reply_to_id)) {
+            await fetchMissingReplies([newMessage], encryptionKey, userId);
+          }
+
+          setMessages(prev => [...prev, newMessage]);
 
           // If user is reading older messages (not at bottom), show jump button + unseen counter (WhatsApp-style)
           if (!isAtBottomRef.current) {
@@ -839,13 +890,18 @@ export default function ChatRoom() {
   const getReplyInfo = useCallback((replyToId: string | null | undefined): ReplyInfo | null => {
     if (!replyToId) return null;
     const msg = messages.find(m => m.id === replyToId);
-    if (!msg) return null;
-    return {
-      id: msg.id,
-      content: msg.deletedForEveryone ? 'This message was deleted' : msg.content,
-      isOwn: msg.isOwn,
-      messageType: msg.deletedForEveryone ? 'text' : msg.messageType,
-    };
+    if (msg) {
+      return {
+        id: msg.id,
+        content: msg.deletedForEveryone ? 'This message was deleted' : msg.content,
+        isOwn: msg.isOwn,
+        messageType: msg.deletedForEveryone ? 'text' : msg.messageType,
+      };
+    }
+    // Check the reply cache for messages not in the current loaded set
+    const cached = replyCacheRef.current.get(replyToId);
+    if (cached) return cached;
+    return null;
   }, [messages]);
 
   const handleEdit = useCallback(

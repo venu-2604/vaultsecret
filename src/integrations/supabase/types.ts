@@ -14,6 +14,69 @@ export type Database = {
   }
   public: {
     Tables: {
+      message_hidden: {
+        Row: {
+          hidden_at: string
+          id: string
+          message_id: string
+          room_id: string
+          user_id: string
+        }
+        Insert: {
+          hidden_at?: string
+          id?: string
+          message_id: string
+          room_id: string
+          user_id: string
+        }
+        Update: {
+          hidden_at?: string
+          id?: string
+          message_id?: string
+          room_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      message_reactions: {
+        Row: {
+          created_at: string | null
+          emoji: string
+          id: string
+          message_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          emoji: string
+          id?: string
+          message_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          emoji?: string
+          id?: string
+          message_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "message_reactions_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "message_reactions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       message_seen: {
         Row: {
           message_id: string
@@ -53,6 +116,8 @@ export type Database = {
       messages: {
         Row: {
           created_at: string
+          deleted_at: string | null
+          deleted_for_everyone: boolean
           edited: boolean
           encrypted_content: string
           id: string
@@ -63,6 +128,8 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          deleted_at?: string | null
+          deleted_for_everyone?: boolean
           edited?: boolean
           encrypted_content: string
           id?: string
@@ -73,6 +140,8 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          deleted_at?: string | null
+          deleted_for_everyone?: boolean
           edited?: boolean
           encrypted_content?: string
           id?: string
@@ -94,19 +163,25 @@ export type Database = {
       room_participants: {
         Row: {
           id: string
+          is_online: boolean | null
           joined_at: string
+          last_active: string | null
           room_id: string
           user_id: string
         }
         Insert: {
           id?: string
+          is_online?: boolean | null
           joined_at?: string
+          last_active?: string | null
           room_id: string
           user_id: string
         }
         Update: {
           id?: string
+          is_online?: boolean | null
           joined_at?: string
+          last_active?: string | null
           room_id?: string
           user_id?: string
         }
