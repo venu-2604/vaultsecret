@@ -281,16 +281,20 @@ export default function ChatRoom() {
       if (result.ok) {
         setJoined(true);
         try {
-          // New/valid session: clear any previous forced-index flag
           localStorage.removeItem(FORCE_INDEX_KEY);
         } catch {
           // ignore
         }
+        // Initialize push notifications for native platforms
+        initPushNotifications(userId, roomId, (targetRoomId) => {
+          // On notification click, navigate to the correct room
+          navigate(`/chat/${targetRoomId}`, { replace: true });
+        });
       } else {
         setRoomError(result.error || 'Cannot join room');
       }
     });
-  }, [roomId, userId]);
+  }, [roomId, userId, navigate]);
 
   // Privacy (mobile + desktop): when tab/window is hidden, overlay + blur so taskbar/Alt+Tab/recent-apps never show chat.
   // On mobile we also redirect to index when user leaves the browser.
