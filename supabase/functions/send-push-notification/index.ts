@@ -1,5 +1,9 @@
-import { corsHeaders } from '../_shared/cors'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
 
 interface PushPayload {
   type: 'new_message' | 'user_online' | 'user_typing'
