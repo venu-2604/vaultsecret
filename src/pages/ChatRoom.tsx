@@ -5,6 +5,7 @@ import { LogOut, WifiOff } from 'lucide-react';
 import vsLogo from '@/assets/vs-logo.png';
 import { supabase } from '@/integrations/supabase/client';
 import { deriveKey, encryptMessage, decryptMessage } from '@/lib/crypto';
+import { initPushNotifications, removeDeviceToken } from '@/lib/pushNotifications';
 import { joinRoom, markMessagesSeen } from '@/lib/user';
 import ChatMessage from '@/components/ChatMessage';
 import ChatInput from '@/components/ChatInput';
@@ -280,16 +281,20 @@ export default function ChatRoom() {
       if (result.ok) {
         setJoined(true);
         try {
-          // New/valid session: clear any previous forced-index flag
           localStorage.removeItem(FORCE_INDEX_KEY);
         } catch {
           // ignore
         }
+        // Initialize push notifications for native platforms
+        initPushNotifications(userId, roomId, (targetRoomId) => {
+          // On notification click, navigate to the correct room
+          navigate(`/chat/${targetRoomId}`, { replace: true });
+        });
       } else {
         setRoomError(result.error || 'Cannot join room');
       }
     });
-  }, [roomId, userId]);
+  }, [roomId, userId, navigate]);
 
   // Privacy (mobile + desktop): when tab/window is hidden, overlay + blur so taskbar/Alt+Tab/recent-apps never show chat.
   // On mobile we also redirect to index when user leaves the browser.
@@ -1241,7 +1246,8 @@ export default function ChatRoom() {
               // Navigate immediately for fast render, update DB in background
               navigate('/', { replace: true });
 
-              // Fire-and-forget: mark offline
+              // Fire-and-forget: remove device token and mark offline
+              if (userId && roomId) removeDeviceToken(userId, roomId).catch(() => {});
               upsertRoomParticipant(
                 { is_online: false, last_active: new Date().toISOString() },
                 'manual_logout'
