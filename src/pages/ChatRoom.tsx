@@ -5,6 +5,7 @@ import { LogOut, WifiOff } from 'lucide-react';
 import vsLogo from '@/assets/vs-logo.png';
 import { supabase } from '@/integrations/supabase/client';
 import { deriveKey, encryptMessage, decryptMessage } from '@/lib/crypto';
+import { initPushNotifications, removeDeviceToken } from '@/lib/pushNotifications';
 import { joinRoom, markMessagesSeen } from '@/lib/user';
 import ChatMessage from '@/components/ChatMessage';
 import ChatInput from '@/components/ChatInput';
