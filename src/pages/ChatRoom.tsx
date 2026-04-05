@@ -1246,7 +1246,8 @@ export default function ChatRoom() {
               // Navigate immediately for fast render, update DB in background
               navigate('/', { replace: true });
 
-              // Fire-and-forget: mark offline
+              // Fire-and-forget: remove device token and mark offline
+              if (userId && roomId) removeDeviceToken(userId, roomId).catch(() => {});
               upsertRoomParticipant(
                 { is_online: false, last_active: new Date().toISOString() },
                 'manual_logout'
