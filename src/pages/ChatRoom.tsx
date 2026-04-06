@@ -73,6 +73,7 @@ export default function ChatRoom() {
   const typingTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
   const seenQueueRef = useRef<Set<string>>(new Set());
   const seenFlushRef = useRef<ReturnType<typeof setTimeout>>();
+  const replyCacheRef = useRef<Map<string, ReplyInfo>>(new Map());
   const inactivityTimerRef = useRef<ReturnType<typeof setTimeout>>();
   // Supabase presence track() return type differs between versions; keep ref typed loosely.
   const presenceChannelRef = useRef<{ untrack: () => void; track: (state: object) => Promise<any> } | null>(null);
@@ -836,17 +837,55 @@ export default function ChatRoom() {
     seenFlushRef.current = setTimeout(flushSeenQueue, 500);
   }, [flushSeenQueue]);
 
+  // Fetch and cache reply info for messages not in current state
+  const fetchAndCacheReply = useCallback(async (replyToId: string) => {
+    if (replyCacheRef.current.has(replyToId) || !encryptionKey || !userId) return;
+    try {
+      const { data } = await supabase
+        .from('messages')
+        .select('id, encrypted_content, sender_id, message_type, deleted_for_everyone')
+        .eq('id', replyToId)
+        .single();
+      if (!data) return;
+      const isMedia = data.message_type === 'image' || data.message_type === 'video';
+      const deletedForEveryone = Boolean(data.deleted_for_everyone);
+      const content = deletedForEveryone
+        ? 'This message was deleted'
+        : isMedia
+          ? data.encrypted_content
+          : await decryptMessage(data.encrypted_content, encryptionKey);
+      const info: ReplyInfo = {
+        id: data.id,
+        content,
+        isOwn: data.sender_id === userId,
+        messageType: deletedForEveryone ? 'text' : data.message_type,
+      };
+      replyCacheRef.current.set(replyToId, info);
+      // Trigger re-render so the reply bubble appears
+      setMessages(prev => [...prev]);
+    } catch (e) {
+      console.error('Failed to fetch reply:', e);
+    }
+  }, [encryptionKey, userId]);
+
   const getReplyInfo = useCallback((replyToId: string | null | undefined): ReplyInfo | null => {
     if (!replyToId) return null;
     const msg = messages.find(m => m.id === replyToId);
-    if (!msg) return null;
-    return {
-      id: msg.id,
-      content: msg.deletedForEveryone ? 'This message was deleted' : msg.content,
-      isOwn: msg.isOwn,
-      messageType: msg.deletedForEveryone ? 'text' : msg.messageType,
-    };
-  }, [messages]);
+    if (msg) {
+      return {
+        id: msg.id,
+        content: msg.deletedForEveryone ? 'This message was deleted' : msg.content,
+        isOwn: msg.isOwn,
+        messageType: msg.deletedForEveryone ? 'text' : msg.messageType,
+      };
+    }
+    // Check cache
+    const cached = replyCacheRef.current.get(replyToId);
+    if (cached) return cached;
+    // Trigger async fetch
+    fetchAndCacheReply(replyToId);
+    return null;
+  }, [messages, fetchAndCacheReply]);
 
   const handleEdit = useCallback(
     async (messageId: string, newContent: string) => {
