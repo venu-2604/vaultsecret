@@ -1013,14 +1013,119 @@ export default function ChatRoom() {
     setReplyTo(msg);
   }, []);
 
-  const handleScrollToMessage = useCallback((messageId: string) => {
+  const scrollToTargetRef = useRef<string | null>(null);
+
+  // When messages update, check if we were waiting to scroll to a target
+  useEffect(() => {
+    const targetId = scrollToTargetRef.current;
+    if (!targetId) return;
+    // Small delay to let DOM refs register
+    const timer = setTimeout(() => {
+      const el = messageElRefs.current.get(targetId);
+      if (el) {
+        scrollToTargetRef.current = null;
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setHighlightedMessageId(targetId);
+        setTimeout(() => setHighlightedMessageId(null), 1500);
+      }
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [messages]);
+
+  const handleScrollToMessage = useCallback(async (messageId: string) => {
+    // If already in DOM, scroll immediately
     const el = messageElRefs.current.get(messageId);
     if (el) {
       el.scrollIntoView({ behavior: 'smooth', block: 'center' });
       setHighlightedMessageId(messageId);
       setTimeout(() => setHighlightedMessageId(null), 1500);
+      return;
     }
-  }, []);
+
+    // Message not loaded yet — load older messages until we find it
+    if (!roomId || !encryptionKey || !userId) return;
+
+    scrollToTargetRef.current = messageId;
+    toast.info('Loading older messages…');
+
+    const PAGE_SIZE = 50;
+    const MAX_ATTEMPTS = 10;
+    let oldest = oldestTimestampRef.current;
+    let found = false;
+
+    for (let attempt = 0; attempt < MAX_ATTEMPTS && !found; attempt++) {
+      if (!oldest) break;
+
+      const { data } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('room_id', roomId)
+        .lt('created_at', oldest)
+        .order('created_at', { ascending: false })
+        .limit(PAGE_SIZE);
+
+      const rows = (data || []) as any[];
+      const ordered = [...rows].reverse();
+      if (ordered.length === 0) {
+        setHasMoreMessages(false);
+        break;
+      }
+
+      oldest = ordered[0]?.created_at ?? oldest;
+      oldestTimestampRef.current = oldest;
+      if (rows.length < PAGE_SIZE) setHasMoreMessages(false);
+
+      // Reactions for this batch
+      const msgIds = ordered.map(m => m.id);
+      const reactionsMap = new Map<string, { emoji: string; user_id: string }[]>();
+      if (msgIds.length > 0) {
+        const { data: reactionsData } = await (supabase as any)
+          .from('message_reactions')
+          .select('message_id, emoji, user_id')
+          .in('message_id', msgIds);
+        for (const r of (reactionsData || []) as any[]) {
+          const existing = reactionsMap.get(r.message_id) || [];
+          existing.push({ emoji: r.emoji, user_id: r.user_id });
+          reactionsMap.set(r.message_id, existing);
+        }
+      }
+
+      const seenByOther = seenByOtherRef.current;
+      const decrypted = await Promise.all(
+        ordered.map(async (msg: any) => {
+          const deletedForEveryone = Boolean(msg.deleted_for_everyone);
+          const isMediaUrl = msg.message_type === 'image' || msg.message_type === 'video';
+          const content = deletedForEveryone
+            ? ''
+            : (isMediaUrl ? msg.encrypted_content : await decryptMessage(msg.encrypted_content, encryptionKey));
+          return {
+            id: msg.id,
+            content,
+            isOwn: msg.sender_id === userId,
+            timestamp: msg.created_at,
+            seen: msg.sender_id === userId && seenByOther.has(msg.id),
+            messageType: deletedForEveryone ? 'text' : msg.message_type,
+            replyToId: msg.reply_to_id || null,
+            edited: msg.edited || false,
+            deletedForEveryone,
+            reactions: aggregateReactions(reactionsMap.get(msg.id) || [], userId),
+          } as Message;
+        })
+      );
+
+      setMessages(prev => [...decrypted, ...prev]);
+
+      // Check if target message is in this batch
+      if (msgIds.includes(messageId)) {
+        found = true;
+      }
+    }
+
+    if (!found) {
+      scrollToTargetRef.current = null;
+      toast.error('Could not find the original message');
+    }
+  }, [roomId, encryptionKey, userId, aggregateReactions]);
 
   const handleStartEdit = useCallback(
     (messageId: string, content: string) => {
