@@ -33,11 +33,14 @@ interface ChatMessageProps {
   onEdit?: (id: string, content: string) => void;
   onDelete?: (id: string, mode: 'me' | 'everyone') => void;
   onReact?: (id: string, emoji: string) => void;
+  onScrollToMessage?: (id: string) => void;
+  highlighted?: boolean;
 }
 
 export default function ChatMessage({
   id, content, isOwn, timestamp, seen, messageType = 'text', edited,
-  deletedForEveryone, replyTo, reactions, onVisible, onReply, onEdit, onDelete, onReact
+  deletedForEveryone, replyTo, reactions, onVisible, onReply, onEdit, onDelete, onReact,
+  onScrollToMessage, highlighted
 }: ChatMessageProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [lightbox, setLightbox] = useState(false);
@@ -169,7 +172,8 @@ export default function ChatMessage({
           {/* Quoted reply bubble */}
           {replyTo && (
             <div
-              className={`mb-1 px-3 py-1.5 rounded-xl text-[11px] border-l-2 ${
+              onClick={() => onScrollToMessage?.(replyTo.id)}
+              className={`mb-1 px-3 py-1.5 rounded-xl text-[11px] border-l-2 cursor-pointer active:opacity-70 transition-opacity ${
                 isOwn
                   ? 'bg-primary/10 border-primary/40 text-primary/80'
                   : 'bg-muted/60 border-accent/40 text-muted-foreground'
