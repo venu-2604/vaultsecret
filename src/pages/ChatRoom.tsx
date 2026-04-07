@@ -65,7 +65,9 @@ export default function ChatRoom() {
   const [hasMoreMessages, setHasMoreMessages] = useState(true);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   const [unseenNewCount, setUnseenNewCount] = useState(0);
+  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messageElRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const initialScrollDoneRef = useRef(false);
   const isAtBottomRef = useRef(true);
@@ -1011,6 +1013,15 @@ export default function ChatRoom() {
     setReplyTo(msg);
   }, []);
 
+  const handleScrollToMessage = useCallback((messageId: string) => {
+    const el = messageElRefs.current.get(messageId);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setHighlightedMessageId(messageId);
+      setTimeout(() => setHighlightedMessageId(null), 1500);
+    }
+  }, []);
+
   const handleStartEdit = useCallback(
     (messageId: string, content: string) => {
       setReplyTo(null);
@@ -1266,7 +1277,7 @@ export default function ChatRoom() {
           const label = showDivider ? getMessageDateLabel(msg.timestamp) : '';
 
           return (
-            <div key={msg.id}>
+            <div key={msg.id} ref={el => { if (el) messageElRefs.current.set(msg.id, el); else messageElRefs.current.delete(msg.id); }}>
               {showDivider && label && <DateDivider label={label} />}
               <ChatMessage
                 id={msg.id}
@@ -1284,6 +1295,8 @@ export default function ChatRoom() {
                 onEdit={handleStartEdit}
                 onDelete={handleDelete}
                 onReact={handleReact}
+                onScrollToMessage={handleScrollToMessage}
+                highlighted={highlightedMessageId === msg.id}
               />
             </div>
           );
