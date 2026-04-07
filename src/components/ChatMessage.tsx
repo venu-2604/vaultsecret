@@ -115,7 +115,7 @@ export default function ChatMessage({
 
   return (
     <>
-      <div ref={ref} className={`relative flex ${isOwn ? 'justify-end' : 'justify-start'} px-4`}>
+      <div ref={ref} className={`relative flex ${isOwn ? 'justify-end' : 'justify-start'} px-4 transition-colors duration-700 ${highlighted ? 'bg-primary/10 rounded-xl' : ''}`}>
         {/* Reply icon on swipe */}
         <motion.div
           style={{ opacity: replyIconOpacity, scale: replyIconScale }}
