@@ -1013,6 +1013,15 @@ export default function ChatRoom() {
     setReplyTo(msg);
   }, []);
 
+  const handleScrollToMessage = useCallback((messageId: string) => {
+    const el = messageElRefs.current.get(messageId);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setHighlightedMessageId(messageId);
+      setTimeout(() => setHighlightedMessageId(null), 1500);
+    }
+  }, []);
+
   const handleStartEdit = useCallback(
     (messageId: string, content: string) => {
       setReplyTo(null);
