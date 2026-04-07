@@ -1277,7 +1277,7 @@ export default function ChatRoom() {
           const label = showDivider ? getMessageDateLabel(msg.timestamp) : '';
 
           return (
-            <div key={msg.id}>
+            <div key={msg.id} ref={el => { if (el) messageElRefs.current.set(msg.id, el); else messageElRefs.current.delete(msg.id); }}>
               {showDivider && label && <DateDivider label={label} />}
               <ChatMessage
                 id={msg.id}
@@ -1295,6 +1295,8 @@ export default function ChatRoom() {
                 onEdit={handleStartEdit}
                 onDelete={handleDelete}
                 onReact={handleReact}
+                onScrollToMessage={handleScrollToMessage}
+                highlighted={highlightedMessageId === msg.id}
               />
             </div>
           );
