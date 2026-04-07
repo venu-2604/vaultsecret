@@ -65,7 +65,9 @@ export default function ChatRoom() {
   const [hasMoreMessages, setHasMoreMessages] = useState(true);
   const [showJumpToBottom, setShowJumpToBottom] = useState(false);
   const [unseenNewCount, setUnseenNewCount] = useState(0);
+  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messageElRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const initialScrollDoneRef = useRef(false);
   const isAtBottomRef = useRef(true);
