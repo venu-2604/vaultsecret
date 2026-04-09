@@ -893,12 +893,11 @@ export default function ChatRoom() {
     async (messageId: string, newContent: string) => {
       if (!encryptionKey || !roomId) return;
       const encrypted = await encryptMessage(newContent, encryptionKey);
-      const editedAt = new Date().toISOString();
 
       setMessages(prev =>
         prev.map(m =>
           m.id === messageId
-            ? { ...m, content: newContent, edited: true, timestamp: editedAt }
+            ? { ...m, content: newContent, edited: true }
             : m
         )
       );
@@ -908,7 +907,6 @@ export default function ChatRoom() {
         .update({
           encrypted_content: encrypted,
           edited: true,
-          created_at: editedAt,
         } as any)
         .eq('id', messageId);
     },
