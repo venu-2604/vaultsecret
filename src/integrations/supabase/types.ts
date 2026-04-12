@@ -195,6 +195,38 @@ export type Database = {
           },
         ]
       }
+      user_push_tokens: {
+        Row: {
+          fcm_token: string
+          id: string
+          platform: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          fcm_token: string
+          id?: string
+          platform?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          fcm_token?: string
+          id?: string
+          platform?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_push_tokens_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       users: {
         Row: {
           created_at: string
