@@ -439,16 +439,6 @@ export default function ChatRoom() {
     seenByOtherRef.current = new Set();
 
     const loadInitial = async () => {
-      // Seen by other (for my sent messages)
-      const { data: seenData } = await supabase
-        .from('message_seen')
-        .select('message_id, user_id')
-        .eq('room_id', roomId)
-        .neq('user_id', userId);
-      const seenByOther = new Set<string>();
-      (seenData || []).forEach(s => seenByOther.add((s as any).message_id));
-      seenByOtherRef.current = seenByOther;
-
       // Hidden messages for me (used by visibleMessages filter)
       const { data: hiddenData } = await (supabase as any)
         .from('message_hidden')
@@ -472,8 +462,21 @@ export default function ChatRoom() {
       oldestTimestampRef.current = ordered[0]?.created_at ?? null;
       setHasMoreMessages(rows.length === PAGE_SIZE);
 
-      // Reactions for this batch
       const msgIds = ordered.map(m => m.id);
+
+      // Seen by other for just this loaded page (prevents large-history cap issues)
+      const seenByOther = seenByOtherRef.current;
+      if (msgIds.length > 0) {
+        const { data: seenData } = await supabase
+          .from('message_seen')
+          .select('message_id')
+          .eq('room_id', roomId)
+          .neq('user_id', userId)
+          .in('message_id', msgIds);
+        (seenData || []).forEach(s => seenByOther.add((s as any).message_id));
+      }
+
+      // Reactions for this batch
       const reactionsMap = new Map<string, { emoji: string; user_id: string }[]>();
       if (msgIds.length > 0) {
         const { data: reactionsData } = await (supabase as any)
@@ -555,8 +558,19 @@ export default function ChatRoom() {
       oldestTimestampRef.current = ordered[0]?.created_at ?? oldestTimestampRef.current;
       if (rows.length < PAGE_SIZE) setHasMoreMessages(false);
 
-      // Reactions for this batch
       const msgIds = ordered.map(m => m.id);
+      const seenByOther = seenByOtherRef.current;
+      if (msgIds.length > 0) {
+        const { data: seenData } = await supabase
+          .from('message_seen')
+          .select('message_id')
+          .eq('room_id', roomId)
+          .neq('user_id', userId)
+          .in('message_id', msgIds);
+        (seenData || []).forEach(s => seenByOther.add((s as any).message_id));
+      }
+
+      // Reactions for this batch
       const reactionsMap = new Map<string, { emoji: string; user_id: string }[]>();
       if (msgIds.length > 0) {
         const { data: reactionsData } = await (supabase as any)
@@ -570,7 +584,6 @@ export default function ChatRoom() {
         }
       }
 
-      const seenByOther = seenByOtherRef.current;
       const decrypted = await Promise.all(
         ordered.map(async (msg: any) => {
           const deletedForEveryone = Boolean(msg.deleted_for_everyone);
@@ -1073,8 +1086,19 @@ export default function ChatRoom() {
       oldestTimestampRef.current = oldest;
       if (rows.length < PAGE_SIZE) setHasMoreMessages(false);
 
-      // Reactions for this batch
       const msgIds = ordered.map(m => m.id);
+      const seenByOther = seenByOtherRef.current;
+      if (msgIds.length > 0) {
+        const { data: seenData } = await supabase
+          .from('message_seen')
+          .select('message_id')
+          .eq('room_id', roomId)
+          .neq('user_id', userId)
+          .in('message_id', msgIds);
+        (seenData || []).forEach(s => seenByOther.add((s as any).message_id));
+      }
+
+      // Reactions for this batch
       const reactionsMap = new Map<string, { emoji: string; user_id: string }[]>();
       if (msgIds.length > 0) {
         const { data: reactionsData } = await (supabase as any)
@@ -1088,7 +1112,6 @@ export default function ChatRoom() {
         }
       }
 
-      const seenByOther = seenByOtherRef.current;
       const decrypted = await Promise.all(
         ordered.map(async (msg: any) => {
           const deletedForEveryone = Boolean(msg.deleted_for_everyone);
