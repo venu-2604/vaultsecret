@@ -19,13 +19,13 @@ import toyGirl from '@/assets/toy-girl.png';
  */
 
 type AvatarGender = 'girl' | 'boy';
-const GIRL_NAMES = ['saniya', 'srivalli', 'nisha'] as const;
+const GIRL_NAMES = ['saniya', 'srivalli', 'valli'] as const;
 const BOY_NAMES = ['venu', 'vikram', 'mithesh'] as const;
 
 const PALETTE: Record<string, { img: string; gender: AvatarGender }> = {
   saniya:   { img: toyGirl, gender: 'girl' },
   srivalli: { img: toyGirl, gender: 'girl' },
-  nisha:    { img: toyGirl, gender: 'girl' },
+  valli:    { img: toyGirl, gender: 'girl' },
   venu:     { img: toyBoy, gender: 'boy' },
   vikram:   { img: toyBoy, gender: 'boy' },
   mithesh:  { img: toyBoy, gender: 'boy' },
@@ -37,13 +37,28 @@ function hashString(s: string): number {
   return h;
 }
 
+/** Detect gender from the user's actual display name (first token, case-insensitive). */
+function detectGender(name: string | undefined): AvatarGender {
+  if (!name) return 'boy';
+  const first = name.trim().toLowerCase().split(/\s+/)[0];
+  if ((GIRL_NAMES as readonly string[]).includes(first)) return 'girl';
+  if ((BOY_NAMES as readonly string[]).includes(first)) return 'boy';
+  // Fallback: stable hash so unknown names get a consistent toy.
+  return hashString(first) % 2 === 0 ? 'girl' : 'boy';
+}
+
 function pickAvatar(seed: string | undefined, gender: AvatarGender, exclude?: string): string {
+  if (seed) {
+    const first = seed.trim().toLowerCase().split(/\s+/)[0];
+    if (PALETTE[first] && PALETTE[first].gender === gender) return first;
+  }
   const pool = gender === 'girl' ? GIRL_NAMES : BOY_NAMES;
   const filtered = exclude ? pool.filter(n => n !== exclude) : pool;
   const arr = filtered.length ? filtered : pool;
   const h = hashString(seed || Math.random().toString());
   return arr[h % arr.length];
 }
+
 
 interface AvatarBlobProps {
   name: string;
@@ -127,11 +142,11 @@ export default function ChatPresenceAvatarLayer({
 }: Props) {
   // Pick stable avatars. Self deterministic by name; peer different from self.
   const selfAvatar = useMemo(
-    () => pickAvatar(selfName, hashString(selfName || 'me') % 2 === 0 ? 'girl' : 'boy'),
+    () => pickAvatar(selfName, detectGender(selfName)),
     [selfName]
   );
   const peerAvatar = useMemo(
-    () => pickAvatar(peerName, hashString(peerName || 'peer') % 2 === 0 ? 'boy' : 'girl', selfAvatar),
+    () => pickAvatar(peerName, detectGender(peerName), selfAvatar),
     [peerName, selfAvatar]
   );
 
