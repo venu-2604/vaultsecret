@@ -150,9 +150,9 @@ export default function ChatPresenceAvatarLayer({
   }, []);
 
   // Seat positions (from spec). Right edge anchored.
-  const rightSeatX = Math.max(0, width - 90); // self
-  const peerSeatX = Math.max(0, width - 150); // beside self (~50px gap from self)
-  const spawnX = -80;
+  const rightSeatX = Math.max(0, width - 110); // self
+  const peerSeatX = Math.max(0, width - 200);  // beside self (~90px gap)
+  const spawnX = -100;
 
   // Isolated state machine for the peer avatar.
   const [remoteState, dispatch] = useReducer(
@@ -257,8 +257,8 @@ export default function ChatPresenceAvatarLayer({
       style={{
         position: 'relative',
         width: '100%',
-        height: 56,
-        marginBottom: -8,
+        height: 80,
+        marginBottom: -16,
         pointerEvents: 'none',
         overflow: 'hidden',
       }}
