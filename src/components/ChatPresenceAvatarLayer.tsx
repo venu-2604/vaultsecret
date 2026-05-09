@@ -1,5 +1,7 @@
 import { useEffect, useReducer, useRef, useState, useMemo } from 'react';
 import { motion, AnimatePresence, useAnimationControls } from 'framer-motion';
+import toyBoy from '@/assets/toy-boy.png';
+import toyGirl from '@/assets/toy-girl.png';
 
 /**
  * ChatPresenceAvatarLayer
@@ -20,13 +22,13 @@ type AvatarGender = 'girl' | 'boy';
 const GIRL_NAMES = ['saniya', 'srivalli', 'nisha'] as const;
 const BOY_NAMES = ['venu', 'vikram', 'mithesh'] as const;
 
-const PALETTE: Record<string, { bg: string; ring: string; emoji: string }> = {
-  saniya:   { bg: 'linear-gradient(135deg,#ffb3c1,#ff8fa3)', ring: '#ff5d8f', emoji: '👧' },
-  srivalli: { bg: 'linear-gradient(135deg,#ffd6a5,#ffadad)', ring: '#f08a5d', emoji: '🧕' },
-  nisha:    { bg: 'linear-gradient(135deg,#caffbf,#9bf6ff)', ring: '#06d6a0', emoji: '👩' },
-  venu:     { bg: 'linear-gradient(135deg,#a0c4ff,#bdb2ff)', ring: '#5e60ce', emoji: '👦' },
-  vikram:   { bg: 'linear-gradient(135deg,#bdb2ff,#ffc6ff)', ring: '#7b2cbf', emoji: '🧑' },
-  mithesh:  { bg: 'linear-gradient(135deg,#fdffb6,#ffd6a5)', ring: '#f4a261', emoji: '👨' },
+const PALETTE: Record<string, { img: string; gender: AvatarGender }> = {
+  saniya:   { img: toyGirl, gender: 'girl' },
+  srivalli: { img: toyGirl, gender: 'girl' },
+  nisha:    { img: toyGirl, gender: 'girl' },
+  venu:     { img: toyBoy, gender: 'boy' },
+  vikram:   { img: toyBoy, gender: 'boy' },
+  mithesh:  { img: toyBoy, gender: 'boy' },
 };
 
 function hashString(s: string): number {
