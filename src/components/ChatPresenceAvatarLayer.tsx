@@ -1,5 +1,7 @@
 import { useEffect, useReducer, useRef, useState, useMemo } from 'react';
 import { motion, AnimatePresence, useAnimationControls } from 'framer-motion';
+import toyBoy from '@/assets/toy-boy.png';
+import toyGirl from '@/assets/toy-girl.png';
 
 /**
  * ChatPresenceAvatarLayer
@@ -20,13 +22,13 @@ type AvatarGender = 'girl' | 'boy';
 const GIRL_NAMES = ['saniya', 'srivalli', 'nisha'] as const;
 const BOY_NAMES = ['venu', 'vikram', 'mithesh'] as const;
 
-const PALETTE: Record<string, { bg: string; ring: string; emoji: string }> = {
-  saniya:   { bg: 'linear-gradient(135deg,#ffb3c1,#ff8fa3)', ring: '#ff5d8f', emoji: '👧' },
-  srivalli: { bg: 'linear-gradient(135deg,#ffd6a5,#ffadad)', ring: '#f08a5d', emoji: '🧕' },
-  nisha:    { bg: 'linear-gradient(135deg,#caffbf,#9bf6ff)', ring: '#06d6a0', emoji: '👩' },
-  venu:     { bg: 'linear-gradient(135deg,#a0c4ff,#bdb2ff)', ring: '#5e60ce', emoji: '👦' },
-  vikram:   { bg: 'linear-gradient(135deg,#bdb2ff,#ffc6ff)', ring: '#7b2cbf', emoji: '🧑' },
-  mithesh:  { bg: 'linear-gradient(135deg,#fdffb6,#ffd6a5)', ring: '#f4a261', emoji: '👨' },
+const PALETTE: Record<string, { img: string; gender: AvatarGender }> = {
+  saniya:   { img: toyGirl, gender: 'girl' },
+  srivalli: { img: toyGirl, gender: 'girl' },
+  nisha:    { img: toyGirl, gender: 'girl' },
+  venu:     { img: toyBoy, gender: 'boy' },
+  vikram:   { img: toyBoy, gender: 'boy' },
+  mithesh:  { img: toyBoy, gender: 'boy' },
 };
 
 function hashString(s: string): number {
@@ -51,43 +53,30 @@ interface AvatarBlobProps {
 
 function AvatarBlob({ name, leaning, small }: AvatarBlobProps) {
   const meta = PALETTE[name] ?? PALETTE.saniya;
-  const size = small ? 40 : 44;
+  const size = small ? 64 : 72;
   return (
     <motion.div
-      // Idle "breathing" via subtle scale loop. Pure GPU transform.
-      animate={{ scale: [1, 1.04, 1] }}
+      animate={{ y: [0, -2, 0] }}
       transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
       style={{ width: size, height: size, willChange: 'transform' }}
       className="relative"
     >
-      <motion.div
-        // Lean forward when typing
-        animate={{ rotate: leaning ? -10 : 0, y: leaning ? -2 : 0 }}
+      <motion.img
+        src={meta.img}
+        alt=""
+        draggable={false}
+        loading="lazy"
+        animate={{ rotate: leaning ? -8 : 0, y: leaning ? -2 : 0 }}
         transition={{ type: 'spring', stiffness: 200, damping: 14 }}
         style={{
           width: '100%',
           height: '100%',
-          borderRadius: '9999px',
-          background: meta.bg,
-          boxShadow: `0 4px 14px -4px ${meta.ring}80, inset 0 -3px 6px rgba(0,0,0,0.08)`,
-          border: `2px solid ${meta.ring}`,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: small ? 20 : 22,
-          lineHeight: 1,
+          objectFit: 'contain',
+          filter: 'drop-shadow(0 6px 8px rgba(0,0,0,0.45))',
           userSelect: 'none',
+          pointerEvents: 'none',
         }}
-      >
-        {/* Blink: vertical scale on a thin overlay simulates blink. */}
-        <motion.span
-          animate={{ scaleY: [1, 1, 0.05, 1, 1] }}
-          transition={{ duration: 4, repeat: Infinity, times: [0, 0.46, 0.5, 0.54, 1], ease: 'easeInOut' }}
-          style={{ display: 'inline-block', transformOrigin: 'center' }}
-        >
-          {meta.emoji}
-        </motion.span>
-      </motion.div>
+      />
       {/* Soft ground shadow */}
       <div
         aria-hidden
@@ -161,9 +150,9 @@ export default function ChatPresenceAvatarLayer({
   }, []);
 
   // Seat positions (from spec). Right edge anchored.
-  const rightSeatX = Math.max(0, width - 90); // self
-  const peerSeatX = Math.max(0, width - 150); // beside self (~50px gap from self)
-  const spawnX = -80;
+  const rightSeatX = Math.max(0, width - 110); // self
+  const peerSeatX = Math.max(0, width - 200);  // beside self (~90px gap)
+  const spawnX = -100;
 
   // Isolated state machine for the peer avatar.
   const [remoteState, dispatch] = useReducer(
@@ -268,8 +257,8 @@ export default function ChatPresenceAvatarLayer({
       style={{
         position: 'relative',
         width: '100%',
-        height: 56,
-        marginBottom: -8,
+        height: 80,
+        marginBottom: -16,
         pointerEvents: 'none',
         overflow: 'hidden',
       }}
