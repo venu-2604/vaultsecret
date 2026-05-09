@@ -8,6 +8,7 @@ import { deriveKey, encryptMessage, decryptMessage } from '@/lib/crypto';
 import { joinRoom, markMessagesSeen } from '@/lib/user';
 import ChatMessage from '@/components/ChatMessage';
 import ChatInput from '@/components/ChatInput';
+import ChatPresenceAvatarLayer from '@/components/ChatPresenceAvatarLayer';
 import TypingIndicator from '@/components/TypingIndicator';
 import { toast } from 'sonner';
 import { format, isToday, isYesterday } from 'date-fns';
@@ -1434,6 +1435,14 @@ export default function ChatRoom() {
 
         <div ref={messagesEndRef} />
       </div>
+
+      {/* Snapchat-style realtime avatar presence overlay (isolated). */}
+      <ChatPresenceAvatarLayer
+        selfName={userName}
+        peerName={state?.userName ? undefined : undefined /* peer name not tracked here */}
+        peerOnline={peerOnline}
+        peerTyping={isTyping}
+      />
 
       {/* Input */}
       <ChatInput
