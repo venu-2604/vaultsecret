@@ -290,6 +290,47 @@ export default function ChatRoom() {
     };
   }, [roomId, userId, joined]);
 
+  // Load self avatar_type once joined; show picker if missing.
+  useEffect(() => {
+    if (!userId || !joined) return;
+    let cancelled = false;
+    (async () => {
+      const t = await getUserAvatarType(userId);
+      if (cancelled) return;
+      setSelfAvatarType(t);
+      setAvatarChecked(true);
+      if (!t) setShowAvatarPicker(true);
+    })();
+    return () => { cancelled = true; };
+  }, [userId, joined]);
+
+  // Load peer avatar_type whenever the peer user_id changes.
+  useEffect(() => {
+    if (!peerUserId) {
+      setPeerAvatarType(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const t = await getUserAvatarType(peerUserId);
+      if (!cancelled) setPeerAvatarType(t);
+    })();
+    return () => { cancelled = true; };
+  }, [peerUserId]);
+
+  const handleAvatarSelect = useCallback(async (type: AvatarType) => {
+    if (!userId) return;
+    try {
+      await setUserAvatarType(userId, type);
+      setSelfAvatarType(type);
+      setShowAvatarPicker(false);
+      toast.success(`Avatar set to ${type}`);
+    } catch (e) {
+      console.error('Failed to save avatar', e);
+      toast.error('Could not save avatar — please try again');
+    }
+  }, [userId]);
+
   // Join room
   useEffect(() => {
     if (!roomId || !userId) return;
