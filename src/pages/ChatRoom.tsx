@@ -247,8 +247,13 @@ export default function ChatRoom() {
         | { user_id: string; is_online: boolean; last_active: string | null }
         | undefined;
 
-      if (!other) setOtherParticipant(null);
-      else setOtherParticipant({ is_online: Boolean(other.is_online), last_active: other.last_active ?? null });
+      if (!other) {
+        setOtherParticipant(null);
+        setPeerUserId(null);
+      } else {
+        setOtherParticipant({ is_online: Boolean(other.is_online), last_active: other.last_active ?? null });
+        setPeerUserId(other.user_id);
+      }
 
       setLastSeenLoaded(true);
     };
