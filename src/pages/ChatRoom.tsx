@@ -278,6 +278,7 @@ export default function ChatRoom() {
             is_online: Boolean(row.is_online),
             last_active: row.last_active ?? null,
           });
+          setPeerUserId(row.user_id);
           setLastSeenLoaded(true);
         }
       )
