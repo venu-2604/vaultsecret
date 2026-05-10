@@ -1,5 +1,5 @@
-import { useEffect, useReducer, useRef, useState, useMemo } from 'react';
-import { motion, AnimatePresence, useAnimationControls } from 'framer-motion';
+import { useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import toyBoy from '@/assets/toy_boy.png';
 import toyGirl from '@/assets/toy-girl.png';
 
@@ -13,9 +13,9 @@ import toyGirl from '@/assets/toy-girl.png';
  * subscribe to or modify any websocket / messages / store. It only reads
  * the booleans the parent already computes (peerOnline, isTyping).
  *
- * State machine per remote avatar:
- *   hidden -> entering -> running -> slowing -> sitting -> idle
- *   (idle) -> leaving -> hidden
+ * Behavior:
+ * - Self avatar stays fixed at top-right above the input bar.
+ * - Peer avatar appears/disappears instantly beside self based on peerOnline.
  */
 
 type AvatarGender = 'girl' | 'boy';
@@ -64,15 +64,14 @@ interface AvatarBlobProps {
   name: string;
   leaning?: boolean;
   small?: boolean;
+  sizeOverride?: number;
 }
 
-function AvatarBlob({ name, leaning, small }: AvatarBlobProps) {
+function AvatarBlob({ name, leaning, small, sizeOverride }: AvatarBlobProps) {
   const meta = PALETTE[name] ?? PALETTE.saniya;
-  const size = small ? 64 : 72;
+  const size = sizeOverride ?? (small ? 64 : 72);
   return (
-    <motion.div
-      animate={{ y: [0, -2, 0] }}
-      transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
+    <div
       style={{ width: size, height: size, willChange: 'transform' }}
       className="relative"
     >
@@ -81,8 +80,6 @@ function AvatarBlob({ name, leaning, small }: AvatarBlobProps) {
         alt=""
         draggable={false}
         loading="lazy"
-        animate={{ rotate: leaning ? -8 : 0, y: leaning ? -2 : 0 }}
-        transition={{ type: 'spring', stiffness: 200, damping: 14 }}
         style={{
           width: '100%',
           height: '100%',
@@ -107,18 +104,9 @@ function AvatarBlob({ name, leaning, small }: AvatarBlobProps) {
           filter: 'blur(1px)',
         }}
       />
-    </motion.div>
+    </div>
   );
 }
-
-type RemoteState =
-  | 'hidden'
-  | 'entering'
-  | 'running'
-  | 'slowing'
-  | 'sitting'
-  | 'idle'
-  | 'leaving';
 
 interface Props {
   selfName?: string;
@@ -152,178 +140,63 @@ export default function ChatPresenceAvatarLayer({
     [peerName, peerGender, selfAvatar]
   );
 
-  // Measure container width to compute seat positions per spec.
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState(0);
-
-  useEffect(() => {
-    if (!containerRef.current) return;
-    const el = containerRef.current;
-    const ro = new ResizeObserver(entries => {
-      for (const e of entries) setWidth(e.contentRect.width);
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
-  // Seat positions (from spec). Right edge anchored.
-  const rightSeatX = Math.max(0, width - 110); // self
-  const peerSeatX = Math.max(0, width - 200);  // beside self (~90px gap)
-  const spawnX = -100;
-
-  // Isolated state machine for the peer avatar.
-  const [remoteState, dispatch] = useReducer(
-    (
-      _prev: RemoteState,
-      action: 'JOIN_SEQUENCE' | 'ARRIVED' | 'SETTLED' | 'USER_LEFT' | 'RESET'
-    ): RemoteState => {
-      switch (action) {
-        case 'JOIN_SEQUENCE': return 'entering';
-        case 'ARRIVED':       return 'slowing';
-        case 'SETTLED':       return 'sitting';
-        case 'USER_LEFT':     return 'leaving';
-        case 'RESET':         return 'hidden';
-        default:              return _prev;
-      }
-    },
-    'hidden'
-  );
-
-  // Map external presence -> animation events (NOT direct binding).
-  const lastOnlineRef = useRef<boolean>(peerOnline);
-  useEffect(() => {
-    if (peerOnline === lastOnlineRef.current) return;
-    lastOnlineRef.current = peerOnline;
-    if (peerOnline) {
-      // If width not measured yet, defer to next paint.
-      if (width > 0) dispatch('JOIN_SEQUENCE');
-    } else {
-      dispatch('USER_LEFT');
-    }
-  }, [peerOnline, width]);
-
-  // If peer was already online when we mounted but width was 0, kick once width arrives.
-  useEffect(() => {
-    if (width > 0 && peerOnline && remoteState === 'hidden') {
-      dispatch('JOIN_SEQUENCE');
-    }
-  }, [width, peerOnline, remoteState]);
-
-  // Drive imperative animation for the running peer avatar.
-  const peerControls = useAnimationControls();
-
-  useEffect(() => {
-    let cancelled = false;
-    const run = async () => {
-      if (remoteState === 'entering') {
-        peerControls.set({ x: spawnX, opacity: 0, scale: 0.9 });
-        await peerControls.start({
-          opacity: 1,
-          scale: 1,
-          transition: { duration: 0.25, ease: 'easeOut' },
-        });
-        if (cancelled) return;
-        // running phase
-        await peerControls.start({
-          x: peerSeatX + 60,
-          transition: { duration: 0.9, ease: [0.4, 0.0, 0.2, 1] },
-        });
-        if (cancelled) return;
-        dispatch('ARRIVED');
-        // slowing
-        await peerControls.start({
-          x: peerSeatX,
-          transition: { duration: 0.45, ease: [0.16, 1, 0.3, 1] },
-        });
-        if (cancelled) return;
-        // tiny landing bounce
-        await peerControls.start({
-          y: [0, -6, 0, -2, 0],
-          transition: { duration: 0.55, ease: 'easeOut' },
-        });
-        if (cancelled) return;
-        dispatch('SETTLED');
-      } else if (remoteState === 'leaving') {
-        // wave + fade
-        await peerControls.start({
-          rotate: [0, 14, -10, 14, 0],
-          transition: { duration: 0.6, ease: 'easeInOut' },
-        });
-        if (cancelled) return;
-        await peerControls.start({
-          opacity: 0,
-          y: -10,
-          transition: { duration: 0.35, ease: 'easeIn' },
-        });
-        if (!cancelled) dispatch('RESET');
-      }
-    };
-    run();
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [remoteState, peerSeatX]);
-
-  const peerVisible = remoteState !== 'hidden';
+  const girlSlotStyle = {
+    position: 'absolute' as const,
+    right: 78,
+    bottom: -14,
+    willChange: 'transform, opacity',
+  };
+  const boySlotStyle = {
+    position: 'absolute' as const,
+    right: 36,
+    bottom: -19,
+    willChange: 'transform, opacity',
+  };
 
   return (
     <div
-      ref={containerRef}
       aria-hidden
-      // Mounted above the input. Doesn't capture pointer events so the
-      // existing UI keeps full interactivity.
       style={{
         position: 'relative',
         width: '100%',
-        height: 80,
-        marginBottom: -16,
+        height: 92,
+        marginBottom: -24,
+        zIndex: 60,
         pointerEvents: 'none',
-        overflow: 'hidden',
+        overflow: 'visible',
       }}
     >
-      {/* Ground line */}
-      <div
-        style={{
-          position: 'absolute',
-          left: 12,
-          right: 12,
-          bottom: 6,
-          height: 1,
-          background:
-            'linear-gradient(to right, transparent, hsl(var(--border)/0.6), transparent)',
-        }}
-      />
-
-      {/* Self avatar — always sitting on the right. */}
+      {/* Self avatar keeps the same slot even when peer is offline. */}
       <motion.div
-        initial={{ y: -20, opacity: 0, scale: 0.7 }}
-        animate={{ y: 0, opacity: 1, scale: 1 }}
-        transition={{ type: 'spring', stiffness: 220, damping: 16, delay: 0.15 }}
-        style={{
-          position: 'absolute',
-          left: rightSeatX,
-          bottom: 8,
-          willChange: 'transform',
-        }}
+        key="self-slot"
+        initial={{ opacity: 0, scale: 0.94 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.18, ease: 'easeOut' }}
+        style={selfGender === 'girl' ? girlSlotStyle : boySlotStyle}
       >
-        <AvatarBlob name={selfAvatar} leaning={selfTyping} />
+        <AvatarBlob
+          name={selfAvatar}
+          leaning={selfTyping}
+          sizeOverride={selfGender === 'boy' ? 78 : undefined}
+        />
       </motion.div>
 
-      {/* Peer avatar — runs in from the left when they join. */}
+      {/* Peer appears in the other fixed slot when online. */}
       <AnimatePresence>
-        {peerVisible && (
+        {peerOnline && (
           <motion.div
-            key="peer"
-            animate={peerControls}
-            initial={{ x: spawnX, opacity: 0, scale: 0.9 }}
-            exit={{ opacity: 0 }}
-            style={{
-              position: 'absolute',
-              left: 0,
-              bottom: 8,
-              willChange: 'transform, opacity',
-            }}
+            key="peer-slot"
+            initial={{ opacity: 0, scale: 0.94 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.94 }}
+            transition={{ duration: 0.16, ease: 'easeOut' }}
+            style={peerGender === 'girl' ? girlSlotStyle : boySlotStyle}
           >
-            <AvatarBlob name={peerAvatar} leaning={peerTyping} small />
+            <AvatarBlob
+              name={peerAvatar}
+              leaning={peerTyping}
+              sizeOverride={peerGender === 'boy' ? 78 : undefined}
+            />
           </motion.div>
         )}
       </AnimatePresence>

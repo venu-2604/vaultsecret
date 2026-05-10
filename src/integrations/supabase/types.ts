@@ -261,16 +261,19 @@ export type Database = {
       }
       users: {
         Row: {
+          avatar_type: string | null
           created_at: string
           full_name: string
           id: string
         }
         Insert: {
+          avatar_type?: string | null
           created_at?: string
           full_name: string
           id?: string
         }
         Update: {
+          avatar_type?: string | null
           created_at?: string
           full_name?: string
           id?: string
@@ -286,6 +289,7 @@ export type Database = {
       get_user_by_name: {
         Args: { _name: string }
         Returns: {
+          avatar_type: string | null
           created_at: string
           full_name: string
           id: string
@@ -294,6 +298,10 @@ export type Database = {
       is_room_member: { Args: { _room_id: string }; Returns: boolean }
       join_room: { Args: { p_room_id: string }; Returns: boolean }
       link_user_auth: { Args: { p_user_id: string }; Returns: undefined }
+      set_user_avatar_type: {
+        Args: { p_avatar_type: string; p_user_id: string }
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never

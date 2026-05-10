@@ -22,19 +22,15 @@ export async function getUserAvatarType(userId: string): Promise<AvatarType | nu
   return v === 'boy' || v === 'girl' ? v : null;
 }
 
-/** Persist a user's chosen avatar_type via SECURITY DEFINER RPC. */
+/** Persist a user's chosen avatar_type in users table. */
 export async function setUserAvatarType(userId: string, avatarType: AvatarType): Promise<void> {
-  // Try RPC first (preferred — bypasses missing UPDATE RLS).
-  const { error: rpcError } = await supabase.rpc(
-    'set_user_avatar_type' as never,
-    { p_user_id: userId, p_avatar_type: avatarType } as never
-  );
-  if (!rpcError) return;
-  // Fallback: direct update (works only if UPDATE policy permits).
-  await supabase
+  const { error: updateError } = await supabase
     .from('users')
     .update({ avatar_type: avatarType } as never)
     .eq('id', userId);
+  if (updateError) {
+    throw updateError;
+  }
 }
 
 /** Sanitize and validate full_name */

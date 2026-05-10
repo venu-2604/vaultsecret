@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, ChevronLeft } from 'lucide-react';
-import toyBoy from '@/assets/toy_boy.png';
-import toyGirl from '@/assets/toy-girl.png';
+import toyBoy from '@/assets/toy-boy-1-standing.png';
+import toyGirl from '@/assets/toy-girl-1-standing.png';
 import type { AvatarType } from '@/lib/user';
 
 interface Props {

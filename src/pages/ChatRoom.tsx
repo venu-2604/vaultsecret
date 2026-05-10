@@ -293,13 +293,15 @@ export default function ChatRoom() {
   // Load self avatar_type once joined; show picker if missing.
   useEffect(() => {
     if (!userId || !joined) return;
+    setAvatarChecked(false);
+    setShowAvatarPicker(false);
     let cancelled = false;
     (async () => {
       const t = await getUserAvatarType(userId);
       if (cancelled) return;
       setSelfAvatarType(t);
       setAvatarChecked(true);
-      if (!t) setShowAvatarPicker(true);
+      setShowAvatarPicker(!t);
     })();
     return () => { cancelled = true; };
   }, [userId, joined]);
