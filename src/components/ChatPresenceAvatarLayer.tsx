@@ -1,6 +1,6 @@
 import { useEffect, useReducer, useRef, useState, useMemo } from 'react';
 import { motion, AnimatePresence, useAnimationControls } from 'framer-motion';
-import toyBoy from '@/assets/toy-boy.png';
+import toyBoy from '@/assets/toy_boy.png';
 import toyGirl from '@/assets/toy-girl.png';
 
 /**
