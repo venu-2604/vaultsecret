@@ -1494,9 +1494,17 @@ export default function ChatRoom() {
       {/* Snapchat-style realtime avatar presence overlay (isolated). */}
       <ChatPresenceAvatarLayer
         selfName={userName}
-        peerName={state?.userName ? undefined : undefined /* peer name not tracked here */}
+        peerName={undefined}
         peerOnline={peerOnline}
         peerTyping={isTyping}
+        selfAvatarType={selfAvatarType}
+        peerAvatarType={peerAvatarType}
+      />
+
+      {/* Avatar selection modal — shown when user has no stored avatar_type. */}
+      <AvatarPickerModal
+        open={showAvatarPicker && avatarChecked}
+        onSelect={handleAvatarSelect}
       />
 
       {/* Input */}
