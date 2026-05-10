@@ -121,16 +121,15 @@ type RemoteState =
   | 'leaving';
 
 interface Props {
-  /** Current user's display name (used to pick own avatar). */
   selfName?: string;
-  /** Peer's display name (for stable avatar pick). */
   peerName?: string;
-  /** Existing presence boolean — peer is in the room. */
   peerOnline: boolean;
-  /** Existing typing boolean — peer is typing. */
   peerTyping?: boolean;
-  /** Optional: typing state for self (own avatar leans). */
   selfTyping?: boolean;
+  /** Explicit avatar type for self — overrides name-based detection. */
+  selfAvatarType?: AvatarGender | null;
+  /** Explicit avatar type for peer — overrides name-based detection. */
+  peerAvatarType?: AvatarGender | null;
 }
 
 export default function ChatPresenceAvatarLayer({
@@ -139,15 +138,18 @@ export default function ChatPresenceAvatarLayer({
   peerOnline,
   peerTyping = false,
   selfTyping = false,
+  selfAvatarType,
+  peerAvatarType,
 }: Props) {
-  // Pick stable avatars. Self deterministic by name; peer different from self.
+  const selfGender: AvatarGender = selfAvatarType ?? detectGender(selfName);
+  const peerGender: AvatarGender = peerAvatarType ?? detectGender(peerName);
   const selfAvatar = useMemo(
-    () => pickAvatar(selfName, detectGender(selfName)),
-    [selfName]
+    () => pickAvatar(selfName, selfGender),
+    [selfName, selfGender]
   );
   const peerAvatar = useMemo(
-    () => pickAvatar(peerName, detectGender(peerName), selfAvatar),
-    [peerName, selfAvatar]
+    () => pickAvatar(peerName, peerGender, selfAvatar),
+    [peerName, peerGender, selfAvatar]
   );
 
   // Measure container width to compute seat positions per spec.

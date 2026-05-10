@@ -5,10 +5,11 @@ import { LogOut, WifiOff } from 'lucide-react';
 import vsLogo from '@/assets/vs-logo.png';
 import { supabase } from '@/integrations/supabase/client';
 import { deriveKey, encryptMessage, decryptMessage } from '@/lib/crypto';
-import { joinRoom, markMessagesSeen } from '@/lib/user';
+import { joinRoom, markMessagesSeen, getUserAvatarType, setUserAvatarType, type AvatarType } from '@/lib/user';
 import ChatMessage from '@/components/ChatMessage';
 import ChatInput from '@/components/ChatInput';
 import ChatPresenceAvatarLayer from '@/components/ChatPresenceAvatarLayer';
+import AvatarPickerModal from '@/components/AvatarPickerModal';
 import TypingIndicator from '@/components/TypingIndicator';
 import { toast } from 'sonner';
 import { format, isToday, isYesterday } from 'date-fns';
@@ -87,6 +88,13 @@ export default function ChatRoom() {
   // Room-based Last Seen (per-room, based on room_participants table)
   const [otherParticipant, setOtherParticipant] = useState<{ is_online: boolean; last_active: string | null } | null>(null);
   const [lastSeenLoaded, setLastSeenLoaded] = useState(false);
+
+  // Avatar selection
+  const [selfAvatarType, setSelfAvatarType] = useState<AvatarType | null>(null);
+  const [peerAvatarType, setPeerAvatarType] = useState<AvatarType | null>(null);
+  const [peerUserId, setPeerUserId] = useState<string | null>(null);
+  const [showAvatarPicker, setShowAvatarPicker] = useState(false);
+  const [avatarChecked, setAvatarChecked] = useState(false);
 
   const visibleMessages = messages.filter(msg => !hiddenMessageIds.has(msg.id));
 
@@ -239,8 +247,13 @@ export default function ChatRoom() {
         | { user_id: string; is_online: boolean; last_active: string | null }
         | undefined;
 
-      if (!other) setOtherParticipant(null);
-      else setOtherParticipant({ is_online: Boolean(other.is_online), last_active: other.last_active ?? null });
+      if (!other) {
+        setOtherParticipant(null);
+        setPeerUserId(null);
+      } else {
+        setOtherParticipant({ is_online: Boolean(other.is_online), last_active: other.last_active ?? null });
+        setPeerUserId(other.user_id);
+      }
 
       setLastSeenLoaded(true);
     };
@@ -265,6 +278,7 @@ export default function ChatRoom() {
             is_online: Boolean(row.is_online),
             last_active: row.last_active ?? null,
           });
+          setPeerUserId(row.user_id);
           setLastSeenLoaded(true);
         }
       )
@@ -275,6 +289,47 @@ export default function ChatRoom() {
       supabase.removeChannel(channel);
     };
   }, [roomId, userId, joined]);
+
+  // Load self avatar_type once joined; show picker if missing.
+  useEffect(() => {
+    if (!userId || !joined) return;
+    let cancelled = false;
+    (async () => {
+      const t = await getUserAvatarType(userId);
+      if (cancelled) return;
+      setSelfAvatarType(t);
+      setAvatarChecked(true);
+      if (!t) setShowAvatarPicker(true);
+    })();
+    return () => { cancelled = true; };
+  }, [userId, joined]);
+
+  // Load peer avatar_type whenever the peer user_id changes.
+  useEffect(() => {
+    if (!peerUserId) {
+      setPeerAvatarType(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const t = await getUserAvatarType(peerUserId);
+      if (!cancelled) setPeerAvatarType(t);
+    })();
+    return () => { cancelled = true; };
+  }, [peerUserId]);
+
+  const handleAvatarSelect = useCallback(async (type: AvatarType) => {
+    if (!userId) return;
+    try {
+      await setUserAvatarType(userId, type);
+      setSelfAvatarType(type);
+      setShowAvatarPicker(false);
+      toast.success(`Avatar set to ${type}`);
+    } catch (e) {
+      console.error('Failed to save avatar', e);
+      toast.error('Could not save avatar — please try again');
+    }
+  }, [userId]);
 
   // Join room
   useEffect(() => {
@@ -1439,9 +1494,17 @@ export default function ChatRoom() {
       {/* Snapchat-style realtime avatar presence overlay (isolated). */}
       <ChatPresenceAvatarLayer
         selfName={userName}
-        peerName={state?.userName ? undefined : undefined /* peer name not tracked here */}
+        peerName={undefined}
         peerOnline={peerOnline}
         peerTyping={isTyping}
+        selfAvatarType={selfAvatarType}
+        peerAvatarType={peerAvatarType}
+      />
+
+      {/* Avatar selection modal — shown when user has no stored avatar_type. */}
+      <AvatarPickerModal
+        open={showAvatarPicker && avatarChecked}
+        onSelect={handleAvatarSelect}
       />
 
       {/* Input */}
