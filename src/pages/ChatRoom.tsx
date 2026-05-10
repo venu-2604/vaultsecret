@@ -89,6 +89,13 @@ export default function ChatRoom() {
   const [otherParticipant, setOtherParticipant] = useState<{ is_online: boolean; last_active: string | null } | null>(null);
   const [lastSeenLoaded, setLastSeenLoaded] = useState(false);
 
+  // Avatar selection
+  const [selfAvatarType, setSelfAvatarType] = useState<AvatarType | null>(null);
+  const [peerAvatarType, setPeerAvatarType] = useState<AvatarType | null>(null);
+  const [peerUserId, setPeerUserId] = useState<string | null>(null);
+  const [showAvatarPicker, setShowAvatarPicker] = useState(false);
+  const [avatarChecked, setAvatarChecked] = useState(false);
+
   const visibleMessages = messages.filter(msg => !hiddenMessageIds.has(msg.id));
 
   // If a previous mobile session requested a forced index redirect, never show chatroom again on reopen
