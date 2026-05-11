@@ -149,7 +149,7 @@ export default function ChatPresenceAvatarLayer({
   const boySlotStyle = {
     position: 'absolute' as const,
     right: 36,
-    bottom: -19,
+    bottom: -28,
     willChange: 'transform, opacity',
   };
 
@@ -159,7 +159,7 @@ export default function ChatPresenceAvatarLayer({
       style={{
         position: 'relative',
         width: '100%',
-        height: 92,
+        height: 100,
         marginBottom: -24,
         zIndex: 60,
         pointerEvents: 'none',
@@ -177,7 +177,7 @@ export default function ChatPresenceAvatarLayer({
         <AvatarBlob
           name={selfAvatar}
           leaning={selfTyping}
-          sizeOverride={selfGender === 'boy' ? 78 : undefined}
+          sizeOverride={selfGender === 'boy' ? 94 : undefined}
         />
       </motion.div>
 
@@ -195,7 +195,7 @@ export default function ChatPresenceAvatarLayer({
             <AvatarBlob
               name={peerAvatar}
               leaning={peerTyping}
-              sizeOverride={peerGender === 'boy' ? 78 : undefined}
+              sizeOverride={peerGender === 'boy' ? 94 : undefined}
             />
           </motion.div>
         )}

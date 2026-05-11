@@ -6,6 +6,8 @@ import vsLogo from '@/assets/vs-logo.png';
 import { supabase } from '@/integrations/supabase/client';
 import { deriveKey, encryptMessage, decryptMessage } from '@/lib/crypto';
 import { joinRoom, markMessagesSeen, getUserAvatarType, setUserAvatarType, type AvatarType } from '@/lib/user';
+import { invokePeerPushNotification } from '@/lib/pushNotifyPeer';
+import { registerDeviceTokenForRoom } from '@/lib/nativePush';
 import ChatMessage from '@/components/ChatMessage';
 import ChatInput from '@/components/ChatInput';
 import ChatPresenceAvatarLayer from '@/components/ChatPresenceAvatarLayer';
@@ -81,6 +83,10 @@ export default function ChatRoom() {
   const inactivityTimerRef = useRef<ReturnType<typeof setTimeout>>();
   // Supabase presence track() return type differs between versions; keep ref typed loosely.
   const presenceChannelRef = useRef<{ untrack: () => void; track: (state: object) => Promise<any> } | null>(null);
+  /** Throttle peer push for typing (ms between FCM calls) */
+  const lastTypingPushAtRef = useRef(0);
+  /** Throttle peer push for “online” (ms between FCM calls) */
+  const lastOnlinePushAtRef = useRef(0);
   const privacyOverlayRef = useRef<HTMLDivElement | null>(null);
   const oldestTimestampRef = useRef<string | null>(null);
   const loadingOlderRef = useRef(false);
@@ -181,6 +187,34 @@ export default function ChatRoom() {
     },
     [roomId, userId]
   );
+
+  const notifyTypingPushThrottled = useCallback(() => {
+    if (!roomId || !userId || !joined) return;
+    const now = Date.now();
+    const minGap = 6000;
+    if (now - lastTypingPushAtRef.current < minGap) return;
+    lastTypingPushAtRef.current = now;
+    void invokePeerPushNotification({
+      kind: 'user_typing',
+      roomId,
+      senderId: userId,
+      senderName: userName || undefined,
+    });
+  }, [roomId, userId, userName, joined]);
+
+  const maybeNotifyPeerOnline = useCallback(() => {
+    if (!roomId || !userId || !joined) return;
+    const now = Date.now();
+    const minGap = 3 * 60 * 1000;
+    if (lastOnlinePushAtRef.current !== 0 && now - lastOnlinePushAtRef.current < minGap) return;
+    lastOnlinePushAtRef.current = now;
+    void invokePeerPushNotification({
+      kind: 'user_online',
+      roomId,
+      senderId: userId,
+      senderName: userName || undefined,
+    });
+  }, [roomId, userId, userName, joined]);
 
   // Room-based Last Seen: mark current user online on enter, offline on leave.
   // Does NOT modify last_active on leave.
@@ -339,6 +373,7 @@ export default function ChatRoom() {
     joinRoom(roomId, userId).then(result => {
       if (result.ok) {
         setJoined(true);
+        void registerDeviceTokenForRoom(roomId);
         try {
           // New/valid session: clear any previous forced-index flag
           localStorage.removeItem(FORCE_INDEX_KEY);
@@ -411,6 +446,7 @@ export default function ChatRoom() {
         );
       } else {
         await upsertRoomParticipant({ is_online: true }, 'visibility_visible');
+        maybeNotifyPeerOnline();
       }
 
       if (isMobile && isHidden) {
@@ -433,7 +469,7 @@ export default function ChatRoom() {
       document.removeEventListener('visibilitychange', handleVisibility);
       removeOverlay();
     };
-  }, [roomId, userId, upsertRoomParticipant]);
+  }, [roomId, userId, upsertRoomParticipant, maybeNotifyPeerOnline]);
 
   // Auto-logout after inactivity (5 minutes)
   const resetInactivityTimer = useCallback(() => {
@@ -855,13 +891,16 @@ export default function ChatRoom() {
         );
       })
       .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED') await presence.track({ online: true });
+        if (status === 'SUBSCRIBED') {
+          await presence.track({ online: true });
+          maybeNotifyPeerOnline();
+        }
       });
     return () => {
       presenceChannelRef.current = null;
       supabase.removeChannel(presence);
     };
-  }, [roomId, userId, joined]);
+  }, [roomId, userId, joined, maybeNotifyPeerOnline]);
 
   // Auto-scroll
   useEffect(() => {
@@ -1076,7 +1115,8 @@ export default function ChatRoom() {
       event: 'typing',
       payload: { senderId: userId },
     });
-  }, [roomId, userId]);
+    notifyTypingPushThrottled();
+  }, [roomId, userId, notifyTypingPushThrottled]);
 
   const handleReply = useCallback((msg: ReplyInfo) => {
     setReplyTo(msg);
@@ -1432,76 +1472,101 @@ export default function ChatRoom() {
         </div>
       </motion.header>
 
-      {/* Messages */}
-      <div
-        className="flex-1 overflow-y-auto overscroll-contain pb-4 space-y-2 pt-16 sm:pt-4"
-        style={headerTop > 0 ? { paddingTop: 64 + headerTop } : undefined}
-        ref={messagesContainerRef}
-        onScroll={handleMessagesScroll}
-      >
-        {loadingOlder && (
-          <div className="flex items-center justify-center py-2">
-            <div className="text-[11px] text-muted-foreground">Loading older messages…</div>
+      {/* Messages scroll (z-0); bottom chrome overlaps so messages pass behind avatars */}
+      <div className="relative flex-1 flex flex-col min-h-0">
+        <div
+          className="flex-1 min-h-0 overflow-y-auto overscroll-contain pb-24 sm:pb-28 space-y-2 pt-16 sm:pt-4 relative z-0"
+          style={headerTop > 0 ? { paddingTop: 64 + headerTop } : undefined}
+          ref={messagesContainerRef}
+          onScroll={handleMessagesScroll}
+        >
+          {loadingOlder && (
+            <div className="flex items-center justify-center py-2">
+              <div className="text-[11px] text-muted-foreground">Loading older messages…</div>
+            </div>
+          )}
+          {visibleMessages.length === 0 && (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }} className="flex flex-col items-center justify-center h-full text-center px-6">
+              <div className="w-12 h-12 rounded-2xl overflow-hidden mb-4">
+                <img src={vsLogo} alt="VaultSecret logo" className="w-full h-full object-cover" />
+              </div>
+              <p className="text-muted-foreground text-sm">End-to-end encrypted</p>
+              <p className="text-muted-foreground/60 text-xs mt-1">Messages are encrypted with your shared password</p>
+            </motion.div>
+          )}
+
+          {visibleMessages.map((msg, idx) => {
+            const currentDayKey = getMessageDayKey(msg.timestamp);
+            const prevDayKey = idx > 0 ? getMessageDayKey(visibleMessages[idx - 1].timestamp) : null;
+            const showDivider = idx === 0 || currentDayKey !== prevDayKey;
+            const label = showDivider ? getMessageDateLabel(msg.timestamp) : '';
+
+            return (
+              <div key={msg.id} ref={el => { if (el) messageElRefs.current.set(msg.id, el); else messageElRefs.current.delete(msg.id); }}>
+                {showDivider && label && <DateDivider label={label} />}
+                <ChatMessage
+                  id={msg.id}
+                  content={msg.content}
+                  isOwn={msg.isOwn}
+                  timestamp={msg.timestamp}
+                  seen={msg.seen}
+                  messageType={msg.messageType}
+                  edited={msg.edited}
+                  deletedForEveryone={msg.deletedForEveryone}
+                  replyTo={getReplyInfo(msg.replyToId)}
+                  reactions={msg.reactions}
+                  onVisible={!msg.isOwn ? handleMessageVisible : undefined}
+                  onReply={handleReply}
+                  onEdit={handleStartEdit}
+                  onDelete={handleDelete}
+                  onReact={handleReact}
+                  onScrollToMessage={handleScrollToMessage}
+                  highlighted={highlightedMessageId === msg.id}
+                />
+              </div>
+            );
+          })}
+
+          {/* Typing lives in the scroll region so it moves with the thread (not pinned to the viewport) */}
+          <AnimatePresence initial={false}>
+            {isTyping && (
+              <div
+                key="peer-typing-strip"
+                className="flex justify-start px-4 pb-2 pt-1 pointer-events-none"
+              >
+                <TypingIndicator />
+              </div>
+            )}
+          </AnimatePresence>
+
+          <div ref={messagesEndRef} />
+        </div>
+
+        {/* Avatars + composer — overlaps thread; typing is above in scroll, not fixed */}
+        <div className="relative z-[60] -mt-24 sm:-mt-28 shrink-0 flex flex-col pointer-events-none">
+          <ChatPresenceAvatarLayer
+            selfName={userName}
+            peerName={undefined}
+            peerOnline={peerOnline}
+            peerTyping={isTyping}
+            selfAvatarType={selfAvatarType}
+            peerAvatarType={peerAvatarType}
+          />
+
+          <div className="pointer-events-auto">
+            <ChatInput
+              onSend={handleSend}
+              onSendMedia={handleSendMedia}
+              onTyping={handleTyping}
+              disabled={!encryptionKey || !joined}
+              replyTo={replyTo}
+              onCancelReply={() => setReplyTo(null)}
+              editingMessage={editingMessage}
+              onCancelEdit={() => setEditingMessage(null)}
+            />
           </div>
-        )}
-        {visibleMessages.length === 0 && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }} className="flex flex-col items-center justify-center h-full text-center px-6">
-            <div className="w-12 h-12 rounded-2xl overflow-hidden mb-4">
-              <img src={vsLogo} alt="VaultSecret logo" className="w-full h-full object-cover" />
-            </div>
-            <p className="text-muted-foreground text-sm">End-to-end encrypted</p>
-            <p className="text-muted-foreground/60 text-xs mt-1">Messages are encrypted with your shared password</p>
-          </motion.div>
-        )}
-
-        {visibleMessages.map((msg, idx) => {
-          const currentDayKey = getMessageDayKey(msg.timestamp);
-          const prevDayKey = idx > 0 ? getMessageDayKey(visibleMessages[idx - 1].timestamp) : null;
-          const showDivider = idx === 0 || currentDayKey !== prevDayKey;
-          const label = showDivider ? getMessageDateLabel(msg.timestamp) : '';
-
-          return (
-            <div key={msg.id} ref={el => { if (el) messageElRefs.current.set(msg.id, el); else messageElRefs.current.delete(msg.id); }}>
-              {showDivider && label && <DateDivider label={label} />}
-              <ChatMessage
-                id={msg.id}
-                content={msg.content}
-                isOwn={msg.isOwn}
-                timestamp={msg.timestamp}
-                seen={msg.seen}
-                messageType={msg.messageType}
-                edited={msg.edited}
-                deletedForEveryone={msg.deletedForEveryone}
-                replyTo={getReplyInfo(msg.replyToId)}
-                reactions={msg.reactions}
-                onVisible={!msg.isOwn ? handleMessageVisible : undefined}
-                onReply={handleReply}
-                onEdit={handleStartEdit}
-                onDelete={handleDelete}
-                onReact={handleReact}
-                onScrollToMessage={handleScrollToMessage}
-                highlighted={highlightedMessageId === msg.id}
-              />
-            </div>
-          );
-        })}
-
-        <AnimatePresence>
-          {isTyping && <TypingIndicator />}
-        </AnimatePresence>
-
-        <div ref={messagesEndRef} />
+        </div>
       </div>
-
-      {/* Snapchat-style realtime avatar presence overlay (isolated). */}
-      <ChatPresenceAvatarLayer
-        selfName={userName}
-        peerName={undefined}
-        peerOnline={peerOnline}
-        peerTyping={isTyping}
-        selfAvatarType={selfAvatarType}
-        peerAvatarType={peerAvatarType}
-      />
 
       {/* Avatar selection modal — shown when user has no stored avatar_type. */}
       <AvatarPickerModal
@@ -1509,24 +1574,15 @@ export default function ChatRoom() {
         onSelect={handleAvatarSelect}
       />
 
-      {/* Input */}
-      <ChatInput
-        onSend={handleSend}
-        onSendMedia={handleSendMedia}
-        onTyping={handleTyping}
-        disabled={!encryptionKey || !joined}
-        replyTo={replyTo}
-        onCancelReply={() => setReplyTo(null)}
-        editingMessage={editingMessage}
-        onCancelEdit={() => setEditingMessage(null)}
-      />
-
       {showJumpToBottom && (
         <button
           type="button"
           onClick={jumpToBottom}
           className="fixed left-1/2 -translate-x-1/2 z-40 rounded-full shadow-lg border border-border/50 bg-background/95 backdrop-blur px-3 py-2 text-xs text-foreground hover:bg-muted/50 transition"
-          style={{ bottom: headerTop > 0 ? 104 : 96 }}
+          style={{
+            /* Typing is in the scroll area, not the bottom chrome — keep offset stable */
+            bottom: headerTop > 0 ? 104 : 96,
+          }}
         >
           <span className="flex items-center gap-2">
             <span className="text-sm leading-none">↓</span>
