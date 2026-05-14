@@ -12,6 +12,7 @@ import {
   setUserAvatarType,
   type AvatarType,
 } from '@/lib/user';
+import { flushRoomParticipantOfflineKeepalive } from '@/lib/roomParticipantOfflineKeepalive';
 import { invokePeerPushNotification } from '@/lib/pushNotifyPeer';
 import { registerDeviceTokenForRoom } from '@/lib/nativePush';
 import ChatMessage from '@/components/ChatMessage';
@@ -263,15 +264,11 @@ export default function ChatRoom() {
     };
   }, [roomId, userId, joined]);
 
-  // Extra safety: if the user closes/navigates away, try to set is_online=false.
-  // (May not always complete on abrupt kills, but improves reliability.)
+  // Tab × / browser quit: normal supabase calls are often cancelled mid-flight — use keepalive fetch.
   useEffect(() => {
     if (!roomId || !userId || !joined) return;
     const markOfflineOnUnload = () => {
-      void upsertRoomParticipant(
-        { is_online: false, last_active: new Date().toISOString() },
-        'unload'
-      );
+      flushRoomParticipantOfflineKeepalive(roomId, userId, new Date().toISOString());
     };
     window.addEventListener('pagehide', markOfflineOnUnload);
     window.addEventListener('beforeunload', markOfflineOnUnload);
@@ -279,7 +276,7 @@ export default function ChatRoom() {
       window.removeEventListener('pagehide', markOfflineOnUnload);
       window.removeEventListener('beforeunload', markOfflineOnUnload);
     };
-  }, [roomId, userId, joined, upsertRoomParticipant]);
+  }, [roomId, userId, joined]);
 
   // Room-based Last Seen: load and realtime subscribe to other participant state.
   useEffect(() => {
