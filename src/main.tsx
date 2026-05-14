@@ -8,16 +8,12 @@ import "./index.css";
 const FORCE_INDEX_KEY = "vaultsecret_force_index";
 
 try {
-  const isMobile =
-    typeof window !== "undefined" &&
-    window.matchMedia &&
-    window.matchMedia("(max-width: 768px)").matches;
   const shouldForceIndex =
     typeof window !== "undefined" &&
     window.location.pathname.startsWith("/chat/") &&
     window.localStorage.getItem(FORCE_INDEX_KEY) === "1";
 
-  if (isMobile && shouldForceIndex) {
+  if (shouldForceIndex) {
     window.location.replace("/");
   }
 } catch {

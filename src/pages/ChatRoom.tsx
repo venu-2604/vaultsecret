@@ -5,7 +5,13 @@ import { LogOut, WifiOff } from 'lucide-react';
 import vsLogo from '@/assets/vs-logo.png';
 import { supabase } from '@/integrations/supabase/client';
 import { deriveKey, encryptMessage, decryptMessage } from '@/lib/crypto';
-import { joinRoom, markMessagesSeen, getUserAvatarType, setUserAvatarType, type AvatarType } from '@/lib/user';
+import {
+  joinRoom,
+  markMessagesSeen,
+  getUserAvatarType,
+  setUserAvatarType,
+  type AvatarType,
+} from '@/lib/user';
 import { invokePeerPushNotification } from '@/lib/pushNotifyPeer';
 import { registerDeviceTokenForRoom } from '@/lib/nativePush';
 import ChatMessage from '@/components/ChatMessage';
@@ -88,6 +94,12 @@ export default function ChatRoom() {
   /** Throttle peer push for “online” (ms between FCM calls) */
   const lastOnlinePushAtRef = useRef(0);
   const privacyOverlayRef = useRef<HTMLDivElement | null>(null);
+  /** If the tab flashes hidden/visible, cancel pending Shopzone navigation after DB flush. */
+  const backgroundLogoutTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** When true, a pending background-exit async chain must not navigate away. */
+  const backgroundExitAbortedRef = useRef(false);
+  /** Prevents duplicate exit flushes when visibilitychange + pagehide both fire (common on mobile). */
+  const exitFlushStartedRef = useRef(false);
   const oldestTimestampRef = useRef<string | null>(null);
   const loadingOlderRef = useRef(false);
 
@@ -104,19 +116,17 @@ export default function ChatRoom() {
 
   const visibleMessages = messages.filter(msg => !hiddenMessageIds.has(msg.id));
 
-  // If a previous mobile session requested a forced index redirect, never show chatroom again on reopen
+  // If browser restored /chat/ without React state (bfcache / cold restore) and we previously left from background, go home
   useEffect(() => {
-    const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
-    if (!isMobile) return;
     try {
       const shouldForceIndex = localStorage.getItem(FORCE_INDEX_KEY) === '1';
-      if (shouldForceIndex) {
+      if (shouldForceIndex && (!password || !userId)) {
         window.location.replace('/');
       }
     } catch {
       // ignore storage errors
     }
-  }, []);
+  }, [password, userId]);
 
   // Lock document scroll so the header stays fixed when the virtual keyboard opens (mobile)
   useEffect(() => {
@@ -215,6 +225,16 @@ export default function ChatRoom() {
       senderName: userName || undefined,
     });
   }, [roomId, userId, userName, joined]);
+
+  // Refs for visibility handler — listener effect uses [] so cleanup does not clear pending logout when `joined` / callbacks change.
+  const joinedRef = useRef(joined);
+  const upsertVisibilityRef = useRef(upsertRoomParticipant);
+  const maybeNotifyVisibilityRef = useRef(maybeNotifyPeerOnline);
+  const navigateVisibilityRef = useRef(navigate);
+  joinedRef.current = joined;
+  upsertVisibilityRef.current = upsertRoomParticipant;
+  maybeNotifyVisibilityRef.current = maybeNotifyPeerOnline;
+  navigateVisibilityRef.current = navigate;
 
   // Room-based Last Seen: mark current user online on enter, offline on leave.
   // Does NOT modify last_active on leave.
@@ -386,8 +406,8 @@ export default function ChatRoom() {
     });
   }, [roomId, userId]);
 
-  // Privacy (mobile + desktop): when tab/window is hidden, overlay + blur so taskbar/Alt+Tab/recent-apps never show chat.
-  // On mobile we also redirect to index when user leaves the browser.
+  // Background / other tab / app switch: mobile + desktop. Uses Page Visibility; pagehide backs up mobile Safari / WebViews.
+  // Writes is_online + last_active to DB, then Shopzone (/) (session / user id kept).
   useEffect(() => {
     const PRIVACY_OVERLAY_ID = 'chat-privacy-overlay';
 
@@ -415,61 +435,102 @@ export default function ChatRoom() {
       privacyOverlayRef.current = overlay;
     };
 
-    const handleVisibility = async () => {
-      const isHidden = document.hidden;
-      const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
+    const handleDocumentHiddenExit = () => {
+      if (!document.hidden) return;
+      if (exitFlushStartedRef.current) return;
+      exitFlushStartedRef.current = true;
 
-      if (isHidden) {
-        // Cover chat immediately so recent-apps preview never shows messages (same-tick)
-        addOverlay();
-      } else {
-        removeOverlay();
+      backgroundExitAbortedRef.current = false;
+      if (backgroundLogoutTimerRef.current !== null) {
+        clearTimeout(backgroundLogoutTimerRef.current);
+        backgroundLogoutTimerRef.current = null;
       }
 
-      // When leaving: untrack presence so peer sees "Waiting..." not "Online"
-      const presence = presenceChannelRef.current;
-      if (presence) {
-        if (isHidden) {
+      addOverlay();
+
+      if (joinedRef.current) {
+        const presence = presenceChannelRef.current;
+        if (presence) {
           presence.untrack();
-        } else {
-          presence.track({ online: true });
         }
       }
 
-      // Room-based last seen:
-      // - is_online toggles on background/foreground
-      // - last_active should represent the time we went offline/left (so update only when hidden/offline)
-      if (isHidden) {
-        await upsertRoomParticipant(
-          { is_online: false, last_active: new Date().toISOString() },
-          'visibility_hidden'
-        );
-      } else {
-        await upsertRoomParticipant({ is_online: true }, 'visibility_visible');
-        maybeNotifyPeerOnline();
-      }
-
-      if (isMobile && isHidden) {
-        // Mark that next time the browser opens on mobile we should force index instead of restoring chat
+      const ts = new Date().toISOString();
+      void (async () => {
+        try {
+          await upsertVisibilityRef.current(
+            { is_online: false, last_active: ts },
+            'visibility_hidden_flush'
+          );
+        } catch {
+          // still leave chat
+        }
+        if (backgroundExitAbortedRef.current) {
+          exitFlushStartedRef.current = false;
+          return;
+        }
         try {
           localStorage.setItem(FORCE_INDEX_KEY, '1');
         } catch {
           // ignore
         }
-        // Redirect so when user returns they land on index; overlay already hid the chat for snapshot
-        window.location.replace('/');
+        if (backgroundExitAbortedRef.current) {
+          exitFlushStartedRef.current = false;
+          return;
+        }
+        navigateVisibilityRef.current('/', { replace: true });
+      })();
+    };
+
+    const handleVisibility = () => {
+      if (!document.hidden) {
+        backgroundExitAbortedRef.current = true;
+        exitFlushStartedRef.current = false;
+        if (backgroundLogoutTimerRef.current !== null) {
+          clearTimeout(backgroundLogoutTimerRef.current);
+          backgroundLogoutTimerRef.current = null;
+        }
+        removeOverlay();
+
+        if (joinedRef.current) {
+          const presence = presenceChannelRef.current;
+          if (presence) {
+            void presence.track({ online: true });
+          }
+
+          void (async () => {
+            await upsertVisibilityRef.current({ is_online: true }, 'visibility_visible');
+            maybeNotifyVisibilityRef.current();
+          })();
+        }
+
+        setBlurred(false);
         return;
       }
 
-      setBlurred(isHidden);
+      handleDocumentHiddenExit();
+    };
+
+    const handlePageHide = () => {
+      if (!document.hidden) return;
+      handleDocumentHiddenExit();
     };
 
     document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('pagehide', handlePageHide);
+
     return () => {
+      backgroundExitAbortedRef.current = true;
+      exitFlushStartedRef.current = false;
       document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('pagehide', handlePageHide);
+      if (backgroundLogoutTimerRef.current !== null) {
+        clearTimeout(backgroundLogoutTimerRef.current);
+        backgroundLogoutTimerRef.current = null;
+      }
       removeOverlay();
     };
-  }, [roomId, userId, upsertRoomParticipant, maybeNotifyPeerOnline]);
+  }, []);
 
   // Auto-logout after inactivity (5 minutes)
   const resetInactivityTimer = useCallback(() => {
